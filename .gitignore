@@ -1,0 +1,6 @@
+build*/
+cmake-build-*/
+tools/onehundo-validate/target/
+__pycache__/
+*.pyc
+.DS_Store

@@ -1,0 +1,35 @@
+[
+  {
+    "schema_version": "0.1.0",
+    "observation_id": "22222222-2222-4222-8222-222222222221",
+    "canonical_game_id": "shared.steam.sample",
+    "observer_id": "steam_local_save_scanner_v1",
+    "source_type": "save_file",
+    "observed_at": "2026-11-24T12:00:00Z",
+    "source_timestamp": "2026-11-24T11:55:12Z",
+    "artifact_hash_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "record_kind": "ACHIEVEMENT_EVIDENCE",
+    "key": "ach_tutorial_complete",
+    "unlocked": true,
+    "progression_mode": "STANDARD",
+    "trust_tier": "LOCAL",
+    "evidence_class": "LOCALLY_OBSERVED",
+    "verification_state": "UNVERIFIED",
+    "provenance_notes": "Imported from synthetic local save file; never treated as live gameplay event."
+  },
+  {
+    "schema_version": "0.1.0",
+    "observation_id": "22222222-2222-4222-8222-222222222222",
+    "canonical_game_id": "shared.steam.sample",
+    "observer_id": "steam_web_api_importer_v1",
+    "source_type": "steam_api",
+    "observed_at": "2026-11-24T12:01:00Z",
+    "record_kind": "PLAYTIME_EVIDENCE",
+    "key": "total_minutes_played",
+    "int_value": 145,
+    "progression_mode": "SPECTATOR",
+    "trust_tier": "LOCAL",
+    "evidence_class": "PLATFORM_CONFIRMED",
+    "verification_state": "VERIFIED"
+  }
+]

@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.onehundo.org/v0.1.0/memory-arena/snapshot-header.schema.json",
+  "title": "OneHundo Plane A Snapshot Header",
+  "description": "Metadata header for Plane A shared memory snapshot slots and offline trace records.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "canonical_game_id",
+    "producer_id",
+    "session_id",
+    "slot_index",
+    "slot_state",
+    "sequence_number",
+    "timestamp_nanos",
+    "lifecycle_signal",
+    "payload_size_bytes",
+    "progression_mode",
+    "trust_tier",
+    "evidence_class",
+    "verification_state"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "canonical_game_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{1,127}$"
+    },
+    "producer_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "slot_index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "slot_state": {
+      "type": "string",
+      "enum": ["FREE", "WRITING", "READY", "READING"]
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "timestamp_nanos": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "lifecycle_signal": {
+      "type": "string",
+      "enum": ["NORMAL_FRAME", "SAVE_STATE_LOAD", "SOFT_RESET", "HARD_RESET", "FRAME_GAP"]
+    },
+    "frame_gap_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Required non-zero count when lifecycle_signal is FRAME_GAP."
+    },
+    "payload_size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "checksum_crc32": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}$"
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["region_id", "offset_bytes", "length_bytes"],
+        "properties": {
+          "region_id": { "type": "integer", "minimum": 0 },
+          "offset_bytes": { "type": "integer", "minimum": 0 },
+          "length_bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "progression_mode": {
+      "type": "string",
+      "enum": ["STANDARD", "ENCORE", "SPECTATOR"]
+    },
+    "trust_tier": {
+      "type": "string",
+      "enum": ["LOCAL", "VERIFIED_INTEGRATION", "COMPETITIVE"]
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": [
+        "DIRECT_INTEGRATION_EVENT",
+        "RUNTIME_OBSERVED",
+        "PLATFORM_CONFIRMED",
+        "LOCALLY_OBSERVED",
+        "INFERRED"
+      ]
+    },
+    "verification_state": {
+      "type": "string",
+      "enum": ["PENDING", "VERIFIED", "UNVERIFIED", "REJECTED"]
+    }
+  }
+}

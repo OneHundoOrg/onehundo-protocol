@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.onehundo.org/v0.1.0/pack/manifest.schema.json",
+  "title": "OneHundo Pack Manifest",
+  "description": "Normative JSON Schema Draft 2020-12 definition for manifest.json inside .onehundo achievement packs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "pack_id",
+    "canonical_game_id",
+    "title",
+    "matchers",
+    "profiles",
+    "achievements"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "const": "0.1.0",
+      "description": "Provisional pack manifest schema version."
+    },
+    "pack_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$",
+      "description": "Unique identifier for this achievement pack."
+    },
+    "pack_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.-]+)?$",
+      "description": "Semantic version of the pack contents."
+    },
+    "canonical_game_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{1,127}$",
+      "description": "Platform-assigned canonical game identifier (e.g. sony.bloodborne)."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Display title of the game or pack."
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "description": "Pack author names or handles."
+    },
+    "matchers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Multi-identity matchers linking ROMs, recompilations, native builds, or store titles to this pack.",
+      "items": {
+        "$ref": "#/$defs/identity_matcher"
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "description": "Ingestion profiles supported by this pack (memory, semantic, observation).",
+      "properties": {
+        "memory": {
+          "$ref": "#/$defs/memory_profile"
+        },
+        "semantic": {
+          "$ref": "#/$defs/semantic_profile"
+        },
+        "observation": {
+          "$ref": "#/$defs/observation_profile"
+        }
+      }
+    },
+    "achievements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/achievement_definition"
+      },
+      "description": "Canonical achievement definitions contained in this pack."
+    },
+    "wasm_sandbox": {
+      "$ref": "#/$defs/wasm_sandbox_metadata"
+    },
+    "signature": {
+      "$ref": "#/$defs/signature_block"
+    }
+  },
+  "$defs": {
+    "progression_mode": {
+      "type": "string",
+      "enum": ["STANDARD", "ENCORE", "SPECTATOR"],
+      "description": "Orthogonal progression mode."
+    },
+    "trust_tier": {
+      "type": "string",
+      "enum": ["LOCAL", "VERIFIED_INTEGRATION", "COMPETITIVE"],
+      "description": "Orthogonal trust tier."
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": [
+        "DIRECT_INTEGRATION_EVENT",
+        "RUNTIME_OBSERVED",
+        "PLATFORM_CONFIRMED",
+        "LOCALLY_OBSERVED",
+        "INFERRED"
+      ],
+      "description": "Orthogonal evidence provenance class."
+    },
+    "identity_matcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matcher_type", "value"],
+      "properties": {
+        "matcher_type": {
+          "type": "string",
+          "enum": [
+            "rom_hash",
+            "recomp_game_id",
+            "build_id",
+            "platform_id",
+            "sidecar_uuid",
+            "asset_archive_hash"
+          ],
+          "description": "Type of runtime/artifact identity matcher."
+        },
+        "algorithm": {
+          "type": "string",
+          "enum": ["sha256", "md5", "xxhash64", "uuid", "exact", "steam_appid", "psn_title_id"],
+          "description": "Optional hash or identifier matching algorithm."
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Expected hash, ID, or UUID string."
+        },
+        "region": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "Optional release region (e.g. USA, EUR, JPN, GLOBAL)."
+        },
+        "revision": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Optional game patch/revision tag."
+        }
+      }
+    },
+    "memory_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "architecture", "regions"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "architecture": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Target CPU/console architecture (e.g. snes, ps2, mips64)."
+        },
+        "default_endianness": {
+          "type": "string",
+          "enum": ["LITTLE", "BIG"]
+        },
+        "regions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["region_name", "guest_base_address", "size_bytes"],
+            "properties": {
+              "region_name": { "type": "string", "minLength": 1 },
+              "guest_base_address": { "type": "string", "pattern": "^0x[0-9a-fA-F]+$" },
+              "size_bytes": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "rules_file": {
+          "type": "string",
+          "description": "Relative archive path to Plane A rules definition."
+        }
+      }
+    },
+    "semantic_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "producer_ids"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "producer_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "declared_stats": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "value_type"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "value_type": { "type": "string", "enum": ["int64", "float64", "string"] },
+              "monotonic": { "type": "boolean" }
+            }
+          }
+        },
+        "rules_file": {
+          "type": "string",
+          "description": "Relative archive path to Plane B semantic trigger rules."
+        }
+      }
+    },
+    "observation_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "sources"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source_type", "evidence_class"],
+            "properties": {
+              "source_type": {
+                "type": "string",
+                "enum": ["steam_api", "psn_trophy", "save_file", "emulator_sram", "log_parser"]
+              },
+              "evidence_class": { "$ref": "#/$defs/evidence_class" },
+              "file_glob": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "achievement_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_achievement_id",
+        "title",
+        "description",
+        "points",
+        "supported_modes",
+        "minimum_trust_tier"
+      ],
+      "properties": {
+        "canonical_achievement_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{1,127}$",
+          "description": "Canonical achievement identifier."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "points": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "hidden": {
+          "type": "boolean",
+          "default": false
+        },
+        "icon_path": {
+          "type": "string",
+          "pattern": "^assets/[a-zA-Z0-9._/-]+\\.(png|jpg|webp)$"
+        },
+        "supported_modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/progression_mode" }
+        },
+        "minimum_trust_tier": {
+          "$ref": "#/$defs/trust_tier"
+        }
+      }
+    },
+    "wasm_sandbox_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module_path", "sha256", "max_memory_bytes", "max_fuel_per_frame"],
+      "properties": {
+        "module_path": {
+          "type": "string",
+          "pattern": "^rules/[a-zA-Z0-9._/-]+\\.wasm$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "max_memory_bytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "maximum": 67108864
+        },
+        "max_fuel_per_frame": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 10000000
+        },
+        "allow_network": {
+          "type": "boolean",
+          "const": false,
+          "description": "WASM evaluation modules must never perform network I/O."
+        },
+        "allow_filesystem": {
+          "type": "boolean",
+          "const": false,
+          "description": "WASM evaluation modules must never access host filesystem."
+        }
+      }
+    },
+    "signature_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "signature_base64", "signed_at"],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["ed25519"]
+        },
+        "key_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "signature_base64": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 512
+        },
+        "signed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

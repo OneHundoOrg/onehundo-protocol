@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  c-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify strict C99 header compilation
+        run: |
+          echo '#include "onehundo/onehundo.h"' | gcc -x c -std=c99 -Wall -Wextra -Werror -pedantic -Iinclude -c - -o /dev/null
+          echo '#include "onehundo/onehundo.h"' | g++ -x c++ -Wall -Wextra -Werror -pedantic -Iinclude -c - -o /dev/null
+      - name: Build & test reference SDK (default)
+        run: |
+          cmake -B build -S .
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+          ./build/bbport_semantic_example
+      - name: Build & test with ASan/UBSan
+        run: |
+          cmake -B build-asan -S . -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+          cmake --build build-asan
+          ctest --test-dir build-asan --output-on-failure
+      - name: Build & test with TSan
+        run: |
+          cmake -B build-tsan -S . -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -g"
+          cmake --build build-tsan
+          ctest --test-dir build-tsan --output-on-failure
+
+  validator-and-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install zstd and PyYAML
+        run: |
+          sudo apt-get update && sudo apt-get install -y zstd python3-yaml
+      - name: Run Rust validator tests & clippy
+        run: |
+          cargo test --manifest-path tools/onehundo-validate/Cargo.toml
+          cargo clippy --manifest-path tools/onehundo-validate/Cargo.toml --all-targets -- -D warnings
+      - name: Run Python conformance suite
+        run: |
+          python3 conformance/tests/run_conformance.py

@@ -1,0 +1,407 @@
+openapi: 3.1.0
+info:
+  title: OneHundo Platform Synchronization API
+  version: 0.1.0
+  description: >
+    Authoritative OpenAPI 3.1 contract between onehundo-client and onehundo-platform.
+    Separates network/batch receipt status (RECEIVED | DUPLICATE) from progression
+    verification acceptance (ACCEPTED | PENDING_REVIEW | REJECTED), and preserves
+    all four orthogonal state dimensions.
+  license:
+    name: MIT OR Apache-2.0
+    identifier: MIT OR Apache-2.0
+servers:
+  - url: https://api.onehundo.org
+    description: OneHundo Cloud Platform Production API
+security:
+  - DeviceBearerAuth: []
+paths:
+  /v1/devices/register:
+    post:
+      operationId: registerDevice
+      summary: Register a local daemon device instance
+      description: Registers a client device and issues a device token for cloud synchronization.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRegisterRequest'
+      responses:
+        '201':
+          description: Device registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRegisterResponse'
+        '400':
+          description: Invalid registration payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/packs/resolve:
+    get:
+      operationId: resolvePack
+      summary: Resolve canonical game ID and achievement pack by identity matcher
+      description: Looks up a canonical game ID and downloadable .onehundo pack bundle using one or more runtime matchers.
+      parameters:
+        - name: matcher_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - rom_hash
+              - recomp_game_id
+              - build_id
+              - platform_id
+              - sidecar_uuid
+              - asset_archive_hash
+        - name: value
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+        - name: region
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 32
+      responses:
+        '200':
+          description: Matching pack resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackResolveResponse'
+        '404':
+          description: No matching pack found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/sync/events:
+    post:
+      operationId: syncEventsBatch
+      summary: Synchronize locally committed gameplay and observation events
+      description: >
+        Ingests a batch of durable local events. Each item reports an independent
+        receipt_status (RECEIVED | DUPLICATE) and acceptance_status (ACCEPTED | PENDING_REVIEW | REJECTED).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncEventsRequest'
+      responses:
+        '200':
+          description: Batch processed with per-event receipt and acceptance outcomes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncEventsResponse'
+        '400':
+          description: Malformed sync batch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized device token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/progression/{canonical_game_id}:
+    get:
+      operationId: getGameProgression
+      summary: Fetch canonical progression state for a game
+      description: Returns user achievement unlocks and stats across all four orthogonal state dimensions.
+      parameters:
+        - name: canonical_game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9][a-z0-9._-]{1,127}$'
+        - name: progression_mode
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ProgressionMode'
+      responses:
+        '200':
+          description: Progression record returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameProgressionResponse'
+        '404':
+          description: Canonical game ID not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    DeviceBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ProgressionMode:
+      type: string
+      enum: [STANDARD, ENCORE, SPECTATOR]
+
+    TrustTier:
+      type: string
+      enum: [LOCAL, VERIFIED_INTEGRATION, COMPETITIVE]
+
+    EvidenceClass:
+      type: string
+      enum:
+        - DIRECT_INTEGRATION_EVENT
+        - RUNTIME_OBSERVED
+        - PLATFORM_CONFIRMED
+        - LOCALLY_OBSERVED
+        - INFERRED
+
+    VerificationState:
+      type: string
+      enum: [PENDING, VERIFIED, UNVERIFIED, REJECTED]
+
+    ReceiptStatus:
+      type: string
+      enum: [RECEIVED, DUPLICATE]
+
+    AcceptanceStatus:
+      type: string
+      enum: [ACCEPTED, PENDING_REVIEW, REJECTED]
+
+    DeviceRegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [device_uuid, client_version, platform_os, architecture]
+      properties:
+        device_uuid:
+          type: string
+          format: uuid
+        device_name:
+          type: string
+          maxLength: 128
+        client_version:
+          type: string
+          maxLength: 32
+        platform_os:
+          type: string
+          enum: [linux, windows, macos, bsd]
+        architecture:
+          type: string
+          enum: [x86_64, aarch64, riscv64, x86]
+
+    DeviceRegisterResponse:
+      type: object
+      additionalProperties: false
+      required: [device_id, device_token, registered_at]
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        device_token:
+          type: string
+          minLength: 16
+        registered_at:
+          type: string
+          format: date-time
+
+    PackResolveResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - canonical_game_id
+        - pack_id
+        - pack_version
+        - download_url
+        - pack_sha256
+      properties:
+        canonical_game_id:
+          type: string
+        pack_id:
+          type: string
+        pack_version:
+          type: string
+        download_url:
+          type: string
+          format: uri
+        pack_sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        signature_key_id:
+          type: string
+
+    SyncEventEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - idempotency_key
+        - canonical_game_id
+        - producer_id
+        - session_id
+        - sequence_number
+        - event_kind
+        - key
+        - occurred_at
+        - progression_mode
+        - trust_tier
+        - evidence_class
+        - verification_state
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 3
+          maxLength: 320
+        canonical_game_id:
+          type: string
+        producer_id:
+          type: string
+        session_id:
+          type: string
+          format: uuid
+        sequence_number:
+          type: integer
+          minimum: 1
+        event_kind:
+          type: string
+          enum: [STAT_SET, STAT_INC, STATE_OBSERVE, UNLOCK_REQUEST, OBSERVATION_IMPORT]
+        key:
+          type: string
+        int_value:
+          type: integer
+        float_value:
+          type: number
+        string_value:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        progression_mode:
+          $ref: '#/components/schemas/ProgressionMode'
+        trust_tier:
+          $ref: '#/components/schemas/TrustTier'
+        evidence_class:
+          $ref: '#/components/schemas/EvidenceClass'
+        verification_state:
+          $ref: '#/components/schemas/VerificationState'
+
+    SyncEventsRequest:
+      type: object
+      additionalProperties: false
+      required: [client_batch_id, events]
+      properties:
+        client_batch_id:
+          type: string
+          format: uuid
+        events:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/SyncEventEnvelope'
+
+    SyncEventResult:
+      type: object
+      additionalProperties: false
+      required:
+        - idempotency_key
+        - receipt_status
+        - acceptance_status
+        - verification_state
+      properties:
+        idempotency_key:
+          type: string
+        receipt_status:
+          $ref: '#/components/schemas/ReceiptStatus'
+        acceptance_status:
+          $ref: '#/components/schemas/AcceptanceStatus'
+        verification_state:
+          $ref: '#/components/schemas/VerificationState'
+        rejection_reason:
+          type:
+            - string
+            - 'null'
+
+    SyncEventsResponse:
+      type: object
+      additionalProperties: false
+      required: [client_batch_id, batch_receipt_status, results]
+      properties:
+        client_batch_id:
+          type: string
+          format: uuid
+        batch_receipt_status:
+          $ref: '#/components/schemas/ReceiptStatus'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncEventResult'
+
+    AchievementProgressionEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - canonical_achievement_id
+        - unlocked
+        - progression_mode
+        - trust_tier
+        - evidence_class
+        - verification_state
+      properties:
+        canonical_achievement_id:
+          type: string
+        unlocked:
+          type: boolean
+        unlocked_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        progression_mode:
+          $ref: '#/components/schemas/ProgressionMode'
+        trust_tier:
+          $ref: '#/components/schemas/TrustTier'
+        evidence_class:
+          $ref: '#/components/schemas/EvidenceClass'
+        verification_state:
+          $ref: '#/components/schemas/VerificationState'
+
+    GameProgressionResponse:
+      type: object
+      additionalProperties: false
+      required: [canonical_game_id, achievements]
+      properties:
+        canonical_game_id:
+          type: string
+        achievements:
+          type: array
+          items:
+            $ref: '#/components/schemas/AchievementProgressionEntry'
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string

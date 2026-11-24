@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.onehundo.org/v0.1.0/common/dimensions.schema.json",
+  "title": "OneHundo Orthogonal State Dimensions & Core Enums",
+  "description": "Canonical definitions for the four orthogonal state dimensions, ingestion planes, and runtime lifecycle signals.",
+  "$defs": {
+    "ingestion_plane": {
+      "type": "string",
+      "enum": [
+        "MEMORY_ARENA",
+        "SEMANTIC_EVENT",
+        "EXTERNAL_OBSERVATION"
+      ],
+      "description": "The ingestion plane producing the data (Plane A, B, or C)."
+    },
+    "progression_mode": {
+      "type": "string",
+      "enum": [
+        "STANDARD",
+        "ENCORE",
+        "SPECTATOR"
+      ],
+      "description": "Orthogonal Dimension 1: Gameplay progression mode."
+    },
+    "trust_tier": {
+      "type": "string",
+      "enum": [
+        "LOCAL",
+        "VERIFIED_INTEGRATION",
+        "COMPETITIVE"
+      ],
+      "description": "Orthogonal Dimension 2: Trust level of the runtime integration and environment."
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": [
+        "DIRECT_INTEGRATION_EVENT",
+        "RUNTIME_OBSERVED",
+        "PLATFORM_CONFIRMED",
+        "LOCALLY_OBSERVED",
+        "INFERRED"
+      ],
+      "description": "Orthogonal Dimension 3: Provenance class of the achievement or stat evidence."
+    },
+    "verification_state": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "VERIFIED",
+        "UNVERIFIED",
+        "REJECTED"
+      ],
+      "description": "Orthogonal Dimension 4: Verification outcome state."
+    },
+    "lifecycle_signal": {
+      "type": "string",
+      "enum": [
+        "NORMAL_FRAME",
+        "SAVE_STATE_LOAD",
+        "SOFT_RESET",
+        "HARD_RESET",
+        "FRAME_GAP"
+      ],
+      "description": "Explicit Plane A frame lifecycle signal."
+    },
+    "receipt_status": {
+      "type": "string",
+      "enum": [
+        "RECEIVED",
+        "DUPLICATE"
+      ],
+      "description": "Durable transport receipt status (distinct from acceptance_status)."
+    },
+    "acceptance_status": {
+      "type": "string",
+      "enum": [
+        "ACCEPTED",
+        "PENDING_REVIEW",
+        "REJECTED"
+      ],
+      "description": "Platform verification acceptance outcome (distinct from receipt_status)."
+    }
+  }
+}

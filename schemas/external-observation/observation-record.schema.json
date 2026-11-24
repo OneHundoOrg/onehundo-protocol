@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.onehundo.org/v0.1.0/external-observation/observation-record.schema.json",
+  "title": "OneHundo Plane C External Observation Record",
+  "description": "Normative schema for Plane C passive observation records (save files, platform APIs, emulator SRAM). Imported strictly as evidence, never masqueraded as live gameplay events.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "observation_id",
+    "canonical_game_id",
+    "observer_id",
+    "source_type",
+    "observed_at",
+    "record_kind",
+    "key",
+    "progression_mode",
+    "trust_tier",
+    "evidence_class",
+    "verification_state"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "observation_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "canonical_game_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{1,127}$"
+    },
+    "observer_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Identifier of the Plane C importer plugin (e.g. steam_local_save_scanner)."
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["steam_api", "psn_trophy", "save_file", "emulator_sram", "log_parser"]
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional timestamp recorded inside the external artifact."
+    },
+    "artifact_hash_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 digest of the observed save file or API payload."
+    },
+    "record_kind": {
+      "type": "string",
+      "enum": ["ACHIEVEMENT_EVIDENCE", "STAT_SNAPSHOT", "PLAYTIME_EVIDENCE"]
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "unlocked": {
+      "type": "boolean"
+    },
+    "int_value": {
+      "type": "integer"
+    },
+    "float_value": {
+      "type": "number"
+    },
+    "string_value": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "progression_mode": {
+      "type": "string",
+      "enum": ["STANDARD", "ENCORE", "SPECTATOR"]
+    },
+    "trust_tier": {
+      "type": "string",
+      "enum": ["LOCAL", "VERIFIED_INTEGRATION", "COMPETITIVE"]
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": ["PLATFORM_CONFIRMED", "LOCALLY_OBSERVED", "INFERRED"],
+      "description": "Plane C evidence must never claim DIRECT_INTEGRATION_EVENT or RUNTIME_OBSERVED."
+    },
+    "verification_state": {
+      "type": "string",
+      "enum": ["PENDING", "VERIFIED", "UNVERIFIED", "REJECTED"]
+    },
+    "provenance_notes": {
+      "type": "string",
+      "maxLength": 512
+    }
+  }
+}

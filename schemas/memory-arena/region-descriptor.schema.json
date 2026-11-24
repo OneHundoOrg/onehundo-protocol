@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.onehundo.org/v0.1.0/memory-arena/region-descriptor.schema.json",
+  "title": "OneHundo Plane A Memory Region Descriptor",
+  "description": "Host-described guest memory region contract for Plane A memory arena runtimes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "region_id",
+    "region_name",
+    "guest_base_address",
+    "size_bytes",
+    "endianness",
+    "coherence"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "region_id": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "region_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "guest_base_address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{1,16}$",
+      "description": "Hexadecimal base address in guest address space."
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "endianness": {
+      "type": "string",
+      "enum": ["LITTLE", "BIG"]
+    },
+    "coherence": {
+      "type": "string",
+      "enum": ["COHERENT", "CACHED_DIRTY", "DMA_ASYNC"]
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["READ_ONLY", "BANKED", "VOLATILE"]
+      },
+      "uniqueItems": true
+    }
+  }
+}
