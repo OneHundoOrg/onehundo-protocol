@@ -41,6 +41,8 @@ struct onehundo_context {
     volatile uint64_t frame_snapshots_published;
     volatile uint64_t frame_gaps_recorded;
     volatile uint32_t is_connected;
+    uint8_t rx_buf[8192];
+    size_t rx_len;
 };
 
 static void win32_safe_strcpy(char *dst, size_t dst_cap, const char *src) {
@@ -58,6 +60,18 @@ static void win32_safe_strcpy(char *dst, size_t dst_cap, const char *src) {
     }
     memcpy(dst, src, len);
     dst[len] = '\0';
+}
+
+static void win32_disconnect(onehundo_context_t *ctx) {
+    if (!ctx) {
+        return;
+    }
+    if (ctx->pipe_handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(ctx->pipe_handle);
+        ctx->pipe_handle = INVALID_HANDLE_VALUE;
+    }
+    ctx->rx_len = 0U;
+    ctx->is_connected = 0U;
 }
 
 static int32_t win32_send_frame(
@@ -83,11 +97,13 @@ static int32_t win32_send_frame(
 
     if (!WriteFile(ctx->pipe_handle, &hdr, (DWORD)sizeof(hdr), &written, NULL) ||
         written != sizeof(hdr)) {
+        win32_disconnect(ctx);
         return ONEHUNDO_ERR_TRANSPORT_FAILURE;
     }
     if (payload && payload_len > 0U) {
         if (!WriteFile(ctx->pipe_handle, payload, (DWORD)payload_len, &written, NULL) ||
             written != payload_len) {
+            win32_disconnect(ctx);
             return ONEHUNDO_ERR_TRANSPORT_FAILURE;
         }
     }
@@ -95,29 +111,56 @@ static int32_t win32_send_frame(
 }
 
 static void win32_poll_acks(onehundo_context_t *ctx) {
-    DWORD avail = 0;
-    onehundo_wire_header_t hdr;
-    DWORD read_bytes = 0;
-
     if (!ctx || ctx->pipe_handle == INVALID_HANDLE_VALUE) {
         return;
     }
 
-    while (PeekNamedPipe(ctx->pipe_handle, NULL, 0, NULL, &avail, NULL) &&
-           avail >= sizeof(onehundo_wire_header_t)) {
-        if (!ReadFile(ctx->pipe_handle, &hdr, (DWORD)sizeof(hdr), &read_bytes, NULL) ||
-            read_bytes != sizeof(hdr)) {
-            break;
+    for (;;) {
+        DWORD avail = 0;
+        DWORD read_bytes = 0;
+        size_t space = sizeof(ctx->rx_buf) - ctx->rx_len;
+
+        if (space > 0U) {
+            DWORD to_read;
+            if (!PeekNamedPipe(ctx->pipe_handle, NULL, 0, NULL, &avail, NULL)) {
+                win32_disconnect(ctx);
+                break;
+            }
+            if (avail == 0) {
+                break;
+            }
+            to_read = (avail < (DWORD)space) ? avail : (DWORD)space;
+            if (!ReadFile(ctx->pipe_handle, ctx->rx_buf + ctx->rx_len, to_read, &read_bytes, NULL) ||
+                read_bytes == 0) {
+                win32_disconnect(ctx);
+                break;
+            }
+            ctx->rx_len += (size_t)read_bytes;
         }
-        if (hdr.magic == ONEHUNDO_WIRE_MAGIC) {
-            if (hdr.payload_length > 0U && hdr.payload_length <= 4096U) {
-                uint8_t discard[4096];
-                DWORD discard_read = 0;
-                (void)ReadFile(ctx->pipe_handle, discard, (DWORD)hdr.payload_length, &discard_read, NULL);
+
+        while (ctx->rx_len >= sizeof(onehundo_wire_header_t)) {
+            onehundo_wire_header_t hdr;
+            size_t frame_len;
+            memcpy(&hdr, ctx->rx_buf, sizeof(hdr));
+            if (hdr.magic != ONEHUNDO_WIRE_MAGIC || hdr.payload_length > 4096U) {
+                win32_disconnect(ctx);
+                return;
+            }
+            frame_len = sizeof(hdr) + (size_t)hdr.payload_length;
+            if (ctx->rx_len < frame_len) {
+                break;
             }
             if (hdr.msg_type == ONEHUNDO_MSG_EVENT_ACK) {
                 InterlockedIncrement64((volatile LONG64 *)&ctx->events_acked);
             }
+            if (ctx->rx_len > frame_len) {
+                memmove(ctx->rx_buf, ctx->rx_buf + frame_len, ctx->rx_len - frame_len);
+            }
+            ctx->rx_len -= frame_len;
+        }
+
+        if (avail == 0) {
+            break;
         }
     }
 }
@@ -142,7 +185,7 @@ int32_t onehundo_init(
 ) {
     onehundo_context_t *ctx;
     wchar_t pipe_w[256];
-    char hello_json[512];
+    char hello_json[768];
     int hello_len;
     DWORD mode;
     uint32_t i;
@@ -206,13 +249,15 @@ int32_t onehundo_init(
         hello_len = _snprintf(
             hello_json,
             sizeof(hello_json),
-            "{\"canonical_game_id\":\"%s\",\"producer_id\":\"%s\",\"session_id\":\"%s\",\"plane\":%u}",
+            "{\"canonical_game_id\":\"%s\",\"producer_id\":\"%s\",\"session_id\":\"%s\",\"plane\":%u,\"progression_mode\":%u,\"trust_tier\":%u}",
             ctx->canonical_game_id,
             ctx->producer_id,
             ctx->session_id,
-            (unsigned)ctx->ingestion_plane
+            (unsigned)ctx->ingestion_plane,
+            (unsigned)ctx->progression_mode,
+            (unsigned)ctx->trust_tier
         );
-        if (hello_len > 0) {
+        if (hello_len > 0 && (size_t)hello_len < sizeof(hello_json)) {
             (void)win32_send_frame(ctx, ONEHUNDO_MSG_HELLO, 0U, hello_json, (uint32_t)hello_len);
         }
     }
@@ -266,8 +311,7 @@ void onehundo_shutdown(onehundo_context_t *ctx) {
     }
     if (ctx->pipe_handle != INVALID_HANDLE_VALUE) {
         (void)win32_send_frame(ctx, ONEHUNDO_MSG_GOODBYE, 0U, NULL, 0U);
-        CloseHandle(ctx->pipe_handle);
-        ctx->pipe_handle = INVALID_HANDLE_VALUE;
+        win32_disconnect(ctx);
     }
     if (ctx->shm_arena) {
         UnmapViewOfFile(ctx->shm_arena);
@@ -335,6 +379,7 @@ static int32_t win32_emit_event(
         return ONEHUNDO_ERR_BUFFER_TOO_SMALL;
     }
     if (ctx->pipe_handle == INVALID_HANDLE_VALUE) {
+        InterlockedIncrement64((volatile LONG64 *)&ctx->events_dropped);
         return ONEHUNDO_ERR_NOT_CONNECTED;
     }
 
