@@ -1,15 +1,15 @@
 # Master Plan — `onehundo-protocol` (Authoritative Specification, SDK & Conformance)
 
-> **Organization:** OneHundo.org  
-> **Repository:** `onehundo-protocol` (Public)  
+> **Organization:** `OneHundoOrg` (`onehundo.org`)  
+> **Repository:** [`onehundo-protocol`](https://github.com/OneHundoOrg/onehundo-protocol) (Public, dual `MIT OR Apache-2.0`)  
 > **Role:** Authoritative protocol definitions, wire/event/pack schemas, strict C99 public SDK (`onehundo.h`), reference implementations, and conformance suite.  
-> **Status:** Phase 0 Kickoff — Ready for autonomous AI agent execution.
+> **Status:** Post-Phase 1.5 Baseline Complete — `v0.1.0` contracts frozen and verified for Phase 2 Plane A cross-runtime proof in `onehundo-client`.
 
 ---
 
 ## 1. Full Architectural Context (Self-Contained Brief)
 
-`onehundo-protocol` powers a **local-first, universal achievement infrastructure** across console emulators, static recompilations, native decompilations/source ports (such as `deadinside28/bloodborne_pc` / `bbport`), and unmodified PC games.
+`onehundo-protocol` powers a **local-first, universal achievement infrastructure** across console emulators, static recompilations, native decompilations/source ports (such as `bbport`), and unmodified PC games.
 
 ### Core Design Thesis
 **Standardise the contracts, not the assumptions.**
@@ -30,13 +30,13 @@ Every schema, event, and record MUST model these four dimensions independently (
 - **`verification_state`:** `PENDING` | `VERIFIED` | `UNVERIFIED` | `REJECTED`
 
 ### Canonical Ownership Matrix (Cross-Repo Contract)
-- **Owned by `onehundo-protocol`:** Pack format & schemas, public C99 header (`onehundo.h`), IPC message definitions, sync event schema, evidence/trust definitions, conformance fixtures & validator CLI.
-- **Owned by `onehundo-client`:** Local daemon (`onehundod`), local achievement state & append-only journal, pack resolution & local evaluation (`rcheevos` + semantic rules), Plane C importers, desktop notifications & optional overlays.
-- **Owned by `onehundo-platform`:** User accounts & user IDs, device registration, canonical game catalogue IDs, game releases & regional aliases, achievement catalogue IDs, pack hosting/signing/publication, sync receipt vs. acceptance decisions, and competitive verification policy.
+- **Owned by `onehundo-protocol` ([`OneHundoOrg/onehundo-protocol`](https://github.com/OneHundoOrg/onehundo-protocol), Public, `MIT OR Apache-2.0`):** Pack format & schemas, public C99 header (`onehundo.h`), IPC message definitions, sync event schema, evidence/trust definitions, conformance fixtures & validator CLI.
+- **Owned by `onehundo-client` ([`OneHundoOrg/onehundo-client`](https://github.com/OneHundoOrg/onehundo-client), Public, `MIT OR Apache-2.0`):** Local daemon (`onehundod`), local achievement state & append-only journal, pack resolution & local evaluation (`rcheevos` + semantic rules), Plane C importers, desktop notifications & `Game Health` / overlays.
+- **Owned by `onehundo-platform` ([`OneHundoOrg/onehundo-platform`](https://github.com/OneHundoOrg/onehundo-platform), Private, Proprietary):** User accounts & user IDs, device registration, Open Achievement Protocol (OAP) canonical game catalogue IDs, game releases & regional aliases, achievement catalogue IDs, pack hosting/signing/publication, sync receipt vs. acceptance decisions, and competitive verification policy.
 
 ---
 
-## 2. Target Repository Layout
+## 2. Repository Layout
 
 ```text
 onehundo-protocol/
@@ -99,36 +99,20 @@ onehundo-protocol/
 
 ---
 
-## 4. Phased Work Breakdown for AI Agents
+## 4. Phased Delivery Status
 
-### Epic P0-1: Repository Scaffold & Governance Docs
-- **Deliverables:** Initialize directory tree above; place `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `instructions/*.md`, and ADR-001 (`.onehundo` provisional format & 3-repo boundary).
-- **Acceptance Criteria:** Tree matches specification; all markdown links resolve; ADR documents canonical ownership table.
+### [x] Phase 0 (Epics P0-1 through P0-5) — Completed
+- **P0-1 Repository Scaffold & Governance Docs:** Tree, `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `instructions/*.md`, and `docs/decisions/0001-provisional-pack-format-and-three-repo-boundary.md`.
+- **P0-2 Public C99 Header (`include/onehundo/onehundo.h`):** Complete versioned C99 ABI (`struct_size` + `api_version` guards, Planes A/B/C, four orthogonal dimensions, lifecycle signals, non-blocking semantic event APIs, `onehundo_get_diagnostics()`).
+- **P0-3 Normative JSON Schemas & OpenAPI Sync Contract:** Draft 2020-12 schemas (`manifest`, `semantic-event`, `region-descriptor`, `snapshot-header`, `observation-record`, `dimensions`) and OpenAPI 3.1 `schemas/sync/openapi.yaml`.
+- **P0-4 Reference C SDK & `bbport` Semantic Example:** `transport_stub.c`, `transport_posix.c`, `transport_win32.c`, and `bbport_semantic_example.c`.
+- **P0-5 Conformance Validator CLI (`tools/onehundo-validate/`) & Fixtures:** Archive security validation (zip-slip `..`, symlink rejection, 100:1 compression ratio) and synthetic fixtures.
 
-### Epic P0-2: Public C99 Header (`include/onehundo/onehundo.h`)
-- **Deliverables:** Complete versioned C99 ABI with `struct_size` + `api_version` guards, enums for Planes A/B/C, orthogonal state dimensions, lifecycle signals (`NORMAL_FRAME`, `SAVE_STATE_LOAD`, `SOFT_RESET`, `HARD_RESET`, `FRAME_GAP`), memory region descriptors, snapshot slot headers, non-blocking semantic event functions (`onehundo_stat_set`, `onehundo_stat_inc`, `onehundo_state_observe`, `onehundo_unlock_request`), and `onehundo_get_diagnostics()`.
-- **Acceptance Criteria:** Compiles with zero warnings under GCC/Clang `-std=c99 -pedantic -Werror` and MSVC `/Za /W4 /WX` on 32-bit and 64-bit targets.
+### [x] Phase 1 & Phase 1.5 — Completed
+- **POSIX/Win32 IPC Transport Hardening:** `$ONEHUNDO_SOCKET` / `$XDG_RUNTIME_DIR/onehundo.sock` discovery before `/tmp/onehundo.sock` fallback, buffered `EVENT_ACK` handling, and `HELLO` `progression_mode`/`trust_tier` wiring in `transport_posix.c` / `transport_win32.c` + `conformance/tests/test_posix_ipc.c`.
+- **TSan & Clippy Cleanliness:** Atomic `slot_state` reads in `reference/c/transport_stub.c` (TSan-clean) and Rust 1.100 Clippy-clean `tools/onehundo-validate/`.
+- **Licensing & Attribution:** Updated dual `MIT OR Apache-2.0` copyright and Cargo repository metadata to `OneHundoOrg` (`https://github.com/OneHundoOrg/onehundo-protocol`).
 
-### Epic P0-3: Normative JSON Schemas & OpenAPI Sync Contract
-- **Deliverables:**
-  - `schemas/pack/manifest.schema.json`: Multi-identity matchers (`rom_hash`, `recomp_game_id`, `build_id`, `platform_id`, `sidecar_uuid`, `asset_archive_hash`), canonical achievement IDs, multiple runtime profiles (`memory`, `semantic`, `observation`), resource/WASM sandbox metadata, and signature block.
-  - `schemas/events/semantic-event.schema.json` & `schemas/external-observation/observation-record.schema.json`.
-  - `schemas/sync/openapi.yaml`: `/v1/devices/register`, `/v1/packs/resolve`, `/v1/sync/events` (separating durable receipt from acceptance outcome), and `/v1/progression/{canonical_game_id}`.
-- **Acceptance Criteria:** All schemas pass JSON Schema Draft 2020-12 meta-validation; OpenAPI passes `spectral` / OpenAPI 3.1 lint with zero errors.
-
-### Epic P0-4: Reference C SDK & `bbport` Semantic Example
-- **Deliverables:**
-  - `reference/c/transport_stub.c` (in-memory mock sink for headless unit tests).
-  - `reference/c/transport_posix.c` (Unix domain socket + POSIX `shm_open` with release/acquire slot transitions) & `reference/c/transport_win32.c` (Named Pipe + `CreateFileMappingW`).
-  - `reference/examples/bbport_semantic_example.c` demonstrating non-blocking Plane B instrumentation for a native port (`sony.bloodborne`).
-- **Acceptance Criteria:** Reference build compiles and passes ASan/UBSan + ThreadSanitizer tests for concurrent slot handoff (`FREE -> WRITING -> READY -> READING -> FREE`).
-
-### Epic P0-5: Conformance Validator CLI (`tools/onehundo-validate/`) & Fixtures
-- **Deliverables:**
-  - CLI tool validating pack archives (schema validation, zip-slip `..` path traversal rejection, symlink rejection, zip-bomb ratio limits) and trace fixtures.
-  - Synthetic conformance fixtures in `conformance/fixtures/`:
-    - `sparse/shared_game_emulated.oh-sparse.jsonl`
-    - `full-snapshot/shared_game_recomp.oh-snap.zst`
-    - `semantic/bbport_sample.oh-events.jsonl`
-    - `observation/steam_local_save.oh-obs.json`
-- **Acceptance Criteria:** Validator passes all valid fixtures and rejects all negative security/malformed test cases in CI; tag release `v0.1.0` for consumption by `onehundo-client` and `onehundo-platform`.
+### [ ] Phase 2 Guardrails (Upstream Stability During `onehundo-client` Plane A Proof)
+- Maintain `v0.1.0` ABI and schema stability while `onehundo-client` wires Plane A shared-memory ring evaluation (`rcheevos`) and cross-runtime portability harnesses.
+- Any protocol change discovered during Phase 2 must land here first, pass CMake/CTest + TSan + `cargo test` + `cargo clippy` + `run_conformance.py`, and be propagated cleanly to `onehundo-client` and `onehundo-platform`.

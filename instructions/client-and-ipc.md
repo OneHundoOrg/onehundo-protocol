@@ -8,7 +8,7 @@ This document defines the wire contracts, memory ordering semantics, and handsha
 
 Communication between game runtimes (emulators, source ports) and the local daemon (`onehundod`) operates across two channels:
 1. **Control / Event Channel:** Bi-directional messaging for lifecycle, registration, semantic events, and acknowledgements.
-   - POSIX: Unix Domain Socket (`/tmp/onehundo.sock` or `$XDG_RUNTIME_DIR/onehundo.sock`)
+   - POSIX: Unix Domain Socket (`$ONEHUNDO_SOCKET` override, then `$XDG_RUNTIME_DIR/onehundo.sock`, falling back to `/tmp/onehundo.sock`)
    - Windows: Named Pipe (`\\.\pipe\onehundo`)
 2. **Memory Arena Channel (Plane A only):** Shared memory ring buffer for zero-copy state handoff.
    - POSIX: POSIX shared memory (`shm_open`)
@@ -44,7 +44,7 @@ All control/event messages are framed with a standard 24-byte, 64-bit aligned bi
 
 | ID | Name | Direction | Description |
 | :--- | :--- | :--- | :--- |
-| `0x0001` | `HELLO` | Runtime -> Daemon | Handshake initiating session with client info and supported plane. |
+| `0x0001` | `HELLO` | Runtime -> Daemon | Handshake initiating session with client info, `ingestion_plane`, `progression_mode`, and `trust_tier`. |
 | `0x0002` | `HELLO_ACK` | Daemon -> Runtime | Handshake acknowledgement with daemon session ID and capabilities. |
 | `0x0003` | `ARENA_REGISTER` | Runtime -> Daemon | Plane A: registers memory regions and shared memory token. |
 | `0x0004` | `ARENA_ACK` | Daemon -> Runtime | Confirms shared memory mapping. |

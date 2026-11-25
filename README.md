@@ -4,23 +4,23 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Standards: ISO C99](https://img.shields.io/badge/standard-ISO%20C99-brightgreen.svg)](include/onehundo/onehundo.h)
 
-**Authoritative protocol specification, wire/pack schemas, public C99 SDK, and conformance suite for the OneHundo universal achievement ecosystem.**
+**Authoritative protocol specification, wire/pack schemas, public C99 SDK, and conformance suite for the [OneHundo](https://onehundo.org) universal achievement ecosystem (`OneHundoOrg`).**
 
 ---
 
 ## Overview
 
-`onehundo-protocol` establishes a vendor-neutral, local-first achievement protocol designed to span emulators, static recompilations, native game source ports (e.g. `bbport`), and external observation of unmodified PC titles.
+`onehundo-protocol` ([`https://github.com/OneHundoOrg/onehundo-protocol`](https://github.com/OneHundoOrg/onehundo-protocol)) establishes a vendor-neutral, local-first achievement protocol designed to span emulators, static recompilations, native game source ports (e.g. `bbport`), and external observation of unmodified PC titles.
 
 ### Core Design Principles
 
 1. **Standardise contracts, not assumptions:** We do not mandate how a game is written or emulated; we standardize how runtime state and semantic events are handed off, validated, and synchronized.
 2. **Strict separation of concerns:**
-   - **`onehundo-protocol`** *(this repository)*: Authoritative schemas, ABI headers (`onehundo.h`), reference transports, and conformance tests.
-   - **`onehundo-client`**: Local daemon (`onehundod`), append-only SQLite journal, `rcheevos` evaluation, and UI overlays.
-   - **`onehundo-platform`**: Global registry, identity, pack signing, catalog, and cloud sync.
+   - **[`onehundo-protocol`](https://github.com/OneHundoOrg/onehundo-protocol)** *(this repository, Public, dual `MIT OR Apache-2.0`)*: Authoritative schemas, ABI headers (`onehundo.h`), reference transports, and conformance tests.
+   - **[`onehundo-client`](https://github.com/OneHundoOrg/onehundo-client)** *(Public, dual `MIT OR Apache-2.0`)*: Local daemon (`onehundod`), append-only SQLite WAL journal, `rcheevos` evaluation, `Game Health` diagnostics, and desktop notifications.
+   - **[`onehundo-platform`](https://github.com/OneHundoOrg/onehundo-platform)** *(Private, Proprietary)*: Global registry, identity, Open Achievement Protocol (OAP) catalog, pack registry/projection, `/v1/*` cloud sync, and web UI (`onehundo.org`).
 3. **Commit-before-Ack:** The local client daemon commits critical game events to durable non-volatile storage before issuing an acknowledgement to the game runtime.
-4. **Receipt vs. Acceptance:** Transport ingestion success is strictly separated from progression validation decisions.
+4. **Receipt vs. Acceptance:** Transport ingestion success (`RECEIVED` | `DUPLICATE`) is strictly separated from progression validation decisions (`ACCEPTED` | `PENDING_REVIEW` | `REJECTED`).
 
 ---
 
@@ -103,6 +103,14 @@ onehundo-protocol/
 
 ---
 
+## Current Status (Post-Phase 1.5 Baseline)
+
+- **Phase 0 & Phase 1 (Complete):** Strict C99 header (`onehundo.h`), JSON Schema 2020-12 & OpenAPI 3.1 contracts, `onehundo-validate`, conformance fixtures, and Plane B end-to-end integration (`bbport` -> `onehundod` -> `onehundo-platform`).
+- **Phase 1.5 (Complete):** POSIX/Win32 IPC transport updates (`$ONEHUNDO_SOCKET` / `$XDG_RUNTIME_DIR/onehundo.sock` discovery before `/tmp/onehundo.sock`, buffered `EVENT_ACK`s, `HELLO` `progression_mode`/`trust_tier`), ThreadSanitizer-clean atomic `slot_state` reads in `reference/c/transport_stub.c`, and Rust Clippy-clean `onehundo-validate`.
+- **Phase 2 (Next in `onehundo-client`):** `v0.1.0` contracts remain frozen while `onehundo-client` completes Plane A shared-memory ring consumption and `rcheevos` cross-runtime evaluation.
+
+---
+
 ## Getting Started
 
 ### Building Reference SDK & Validator
@@ -113,16 +121,17 @@ Requirements:
 - CMake >= 3.16
 
 ```bash
-# Build reference SDK and run test suite
-mkdir build && cd build
-cmake ..
-cmake --build .
-ctest --output-on-failure
+# Build reference SDK and run C/C++ + POSIX IPC conformance tests
+cmake -B build -S .
+cmake --build build
+ctest --test-dir build --output-on-failure
 
-# Build and run conformance validator
-cd ../tools/onehundo-validate
-cargo build --release
-cargo test
+# Build, test, and lint conformance validator
+cargo test --manifest-path tools/onehundo-validate/Cargo.toml
+cargo clippy --manifest-path tools/onehundo-validate/Cargo.toml --all-targets -- -D warnings
+
+# Run cross-fixture conformance script
+python3 conformance/tests/run_conformance.py
 ```
 
 ### Validating Pack Archives
