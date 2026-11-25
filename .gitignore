@@ -1,6 +1,31 @@
+# C / CMake build artifacts
+build/
 build*/
 cmake-build-*/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# Rust validator outputs
 tools/onehundo-validate/target/
+**/target/
+**/*.rs.bk
+
+# Python caches
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# Local environment, runtime sockets & journals
+.env
+.env.*
+!.env.example
+*.sock
+*.db*
+
+# OS & editor files
 .DS_Store
+.vscode/
+.idea/
