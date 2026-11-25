@@ -198,21 +198,15 @@ fn dynamic_trees(reader: &mut BitReader<'_>) -> Result<(HuffmanTree, HuffmanTree
                     .last()
                     .ok_or_else(|| DeflateError("repeat code 16 with no previous length".into()))?;
                 let repeat = reader.read_bits(2)? as usize + 3;
-                for _ in 0..repeat {
-                    lengths.push(prev);
-                }
+                lengths.resize(lengths.len() + repeat, prev);
             }
             17 => {
                 let repeat = reader.read_bits(3)? as usize + 3;
-                for _ in 0..repeat {
-                    lengths.push(0);
-                }
+                lengths.resize(lengths.len() + repeat, 0);
             }
             18 => {
                 let repeat = reader.read_bits(7)? as usize + 11;
-                for _ in 0..repeat {
-                    lengths.push(0);
-                }
+                lengths.resize(lengths.len() + repeat, 0);
             }
             _ => return Err(DeflateError("invalid code-length symbol".into())),
         }

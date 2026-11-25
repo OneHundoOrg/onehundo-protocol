@@ -152,13 +152,14 @@ pub fn read_and_validate_zip(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, 
         }
 
         // Compression bomb ratio guard (declared)
-        if !is_dir && uncomp_size > 0 {
-            if comp_size == 0 || uncomp_size / comp_size > MAX_COMPRESSION_RATIO {
-                return Err(format!(
-                    "compression bomb detected on '{}' (declared ratio > {}:1)",
-                    name, MAX_COMPRESSION_RATIO
-                ));
-            }
+        if !is_dir
+            && uncomp_size > 0
+            && (comp_size == 0 || uncomp_size / comp_size > MAX_COMPRESSION_RATIO)
+        {
+            return Err(format!(
+                "compression bomb detected on '{}' (declared ratio > {}:1)",
+                name, MAX_COMPRESSION_RATIO
+            ));
         }
 
         // Read Local File Header

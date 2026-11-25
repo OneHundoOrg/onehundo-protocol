@@ -130,7 +130,7 @@ int32_t onehundo_init(
         ctx->arena.slots[i].header.struct_size = (uint32_t)sizeof(onehundo_snapshot_slot_header_t);
         ctx->arena.slots[i].header.api_version = ONEHUNDO_API_VERSION;
         ctx->arena.slots[i].header.slot_index = i;
-        ctx->arena.slots[i].header.slot_state = ONEHUNDO_SLOT_STATE_FREE;
+        oh_atomic_u32_store_rel(&ctx->arena.slots[i].header.slot_state, ONEHUNDO_SLOT_STATE_FREE);
     }
 
     *out_ctx = ctx;
@@ -446,9 +446,24 @@ int32_t onehundo_stub_consumer_acquire_ready_slot(
         uint32_t idx = (ctx->consumer_slot_cursor + i) % ctx->arena.slot_count;
         uint32_t expected = ONEHUNDO_SLOT_STATE_READY;
         if (oh_atomic_u32_cas(&ctx->arena.slots[idx].header.slot_state, &expected, ONEHUNDO_SLOT_STATE_READING)) {
+            const onehundo_snapshot_slot_header_t *hdr = &ctx->arena.slots[idx].header;
             ctx->consumer_slot_cursor = (idx + 1U) % ctx->arena.slot_count;
             *out_slot_index = idx;
-            *out_header = ctx->arena.slots[idx].header;
+            /*
+             * Copy non-atomic header fields individually so we never perform a
+             * non-atomic read of hdr->slot_state while the producer polls CAS.
+             */
+            out_header->struct_size = hdr->struct_size;
+            out_header->api_version = hdr->api_version;
+            out_header->slot_index = hdr->slot_index;
+            out_header->slot_state = ONEHUNDO_SLOT_STATE_READING;
+            out_header->sequence_number = hdr->sequence_number;
+            out_header->timestamp_nanos = hdr->timestamp_nanos;
+            out_header->lifecycle_signal = hdr->lifecycle_signal;
+            out_header->frame_gap_count = hdr->frame_gap_count;
+            out_header->payload_size_bytes = hdr->payload_size_bytes;
+            out_header->crc32 = hdr->crc32;
+            out_header->reserved = hdr->reserved;
             *out_payload_ptr = ctx->arena.slots[idx].payload;
             return ONEHUNDO_OK;
         }
