@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.onehundo.org/v0.1.0/pack/save-rules.schema.json",
+  "title": "OneHundo Declarative Save & Observation Rules",
+  "description": "Normative JSON Schema Draft 2020-12 definition for rules/save.json inside .onehundo packs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "canonical_game_id", "watchers"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "canonical_game_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{1,127}$"
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "watchers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/save_watcher" }
+    }
+  },
+  "$defs": {
+    "endianness": {
+      "type": "string",
+      "enum": ["LITTLE", "BIG"]
+    },
+    "value_type": {
+      "type": "string",
+      "enum": [
+        "u8",
+        "i8",
+        "u16",
+        "i16",
+        "u32",
+        "i32",
+        "u64",
+        "i64",
+        "f32",
+        "f64",
+        "bool",
+        "string",
+        "bitmask"
+      ]
+    },
+    "condition_op": {
+      "type": "string",
+      "enum": ["==", "!=", ">=", ">", "<=", "<", "nonzero", "bit_set", "bit_clear", "contains"]
+    },
+    "save_condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value_type", "op"],
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Dot/bracket JSON path (e.g. slots[0].bosses_defeated)."
+        },
+        "section": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Optional INI section name."
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "INI or key-value key name."
+        },
+        "value_type": { "$ref": "#/$defs/value_type" },
+        "endianness": { "$ref": "#/$defs/endianness" },
+        "bit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "mask": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^(0x)?[0-9a-fA-F]+$" }
+          ]
+        },
+        "op": { "$ref": "#/$defs/condition_op" },
+        "value": {
+          "type": ["integer", "number", "boolean", "string"]
+        }
+      }
+    },
+    "save_achievement_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["achievement_id", "conditions"],
+      "properties": {
+        "achievement_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{1,127}$"
+        },
+        "all_of": {
+          "type": "boolean",
+          "default": true
+        },
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/save_condition" }
+        }
+      }
+    },
+    "save_stat_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stat_key", "value_type"],
+      "properties": {
+        "stat_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "section": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "value_type": { "$ref": "#/$defs/value_type" },
+        "endianness": { "$ref": "#/$defs/endianness" },
+        "bit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "mask": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^(0x)?[0-9a-fA-F]+$" }
+          ]
+        }
+      }
+    },
+    "save_watcher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source_type", "format", "file_glob"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{1,63}$"
+        },
+        "source_type": {
+          "type": "string",
+          "enum": ["save_file", "emulator_sram", "log_parser"]
+        },
+        "format": {
+          "type": "string",
+          "enum": ["binary", "json", "ini", "kv", "template"]
+        },
+        "file_glob": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "not": { "pattern": "(^/|^[A-Za-z]:|\\\\|(^|/)\\.\\.(/|$))" },
+          "description": "Glob relative to watched folder; never allows absolute paths, drive letters, backslashes, or '..'."
+        },
+        "magic_hex": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{2,64}$"
+        },
+        "magic_ascii": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "magic_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "endianness": {
+          "$ref": "#/$defs/endianness"
+        },
+        "max_file_size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "placeholder_template": {
+          "type": "boolean",
+          "description": "True when offsets are explicitly reserved as schema-valid templates awaiting verified save dumps."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "achievement_rules": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "$ref": "#/$defs/save_achievement_rule" }
+        },
+        "stat_rules": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/save_stat_rule" }
+        }
+      }
+    }
+  }
+}

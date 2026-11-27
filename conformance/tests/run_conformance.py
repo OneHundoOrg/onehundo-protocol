@@ -23,7 +23,7 @@ VALIDATOR_BIN = ROOT / "tools" / "onehundo-validate" / "target" / "debug" / "one
 
 def check_json_schemas() -> None:
     schema_files = sorted((ROOT / "schemas").rglob("*.schema.json"))
-    assert len(schema_files) >= 6, "Expected at least 6 schema files"
+    assert len(schema_files) >= 7, "Expected at least 7 schema files"
     for sf in schema_files:
         data = json.loads(sf.read_text(encoding="utf-8"))
         assert data.get("$schema") == "https://json-schema.org/draft/2020-12/schema", (
@@ -67,6 +67,11 @@ def check_openapi_spec() -> None:
     assert schemas["ReceiptStatus"]["enum"] == ["RECEIVED", "DUPLICATE"]
     assert schemas["AcceptanceStatus"]["enum"] == ["ACCEPTED", "PENDING_REVIEW", "REJECTED"]
 
+    resolve_params = {p["name"]: p for p in paths["/v1/packs/resolve"]["get"]["parameters"]}
+    matcher_enum = set(resolve_params["matcher_type"]["schema"]["enum"])
+    for req_matcher in ["rom_hash", "recomp_game_id", "build_id", "platform_id", "sidecar_uuid", "asset_archive_hash", "executable", "app_id", "save_path_glob"]:
+        assert req_matcher in matcher_enum, f"OpenAPI resolvePack missing matcher_type {req_matcher}"
+
     # Check component refs resolve
     raw = json.dumps(spec)
     for ref in re.findall(r'"#\/components\/schemas\/([^"]+)"', raw):
@@ -93,7 +98,7 @@ def check_openapi_spec() -> None:
 
 
 def check_schema_bounds() -> None:
-    """Exercises the manifest and observation schemas' own patterns and bounds (no jsonschema dependency)."""
+    """Exercises the manifest, save-rules, and observation schemas' own patterns and bounds (no jsonschema dependency)."""
     manifest = json.loads((ROOT / "schemas" / "pack" / "manifest.schema.json").read_text(encoding="utf-8"))
     defs, props = manifest["$defs"], manifest["properties"]
     ach = defs["achievement_definition"]["properties"]
@@ -106,24 +111,38 @@ def check_schema_bounds() -> None:
     assert module.search("rules/eval/main.wasm") and not module.search("rules/../main.wasm")
     rules = defs["semantic_profile"]["properties"]["rules_file"]
     rules_ok, rules_not = re.compile(rules["pattern"]), re.compile(rules["not"]["pattern"])
-    for ok in ["achievements/default.json", "rules/memory.json"]:
+    for ok in ["achievements/default.json", "rules/memory.json", "rules/save.json"]:
         assert rules_ok.search(ok) and not rules_not.search(ok), f"rules_file should accept {ok}"
     for bad in ["../x.json", "a/../x.json", "./x.json", "/etc/x.json"]:
         assert not rules_ok.search(bad) or rules_not.search(bad), f"rules_file must reject {bad}"
+    obs_rules = defs["observation_profile"]["properties"]["rules_file"]
+    obs_ok, obs_not = re.compile(obs_rules["pattern"]), re.compile(obs_rules["not"]["pattern"])
+    assert obs_ok.search("rules/save.json") and not obs_not.search("rules/save.json")
+    assert obs_not.search("rules/../save.json")
     glob_not = re.compile(defs["observation_profile"]["properties"]["sources"]["items"]["properties"]["file_glob"]["not"]["pattern"])
     assert not glob_not.search("**/progress.sav")
     for bad in ["../*.sav", "/home/*/x", "C:/Saves/*", "a\\b", "x/../y"]:
         assert glob_not.search(bad), f"file_glob must reject {bad}"
+    wp_not = re.compile(defs["observation_profile"]["properties"]["watch_paths"]["items"]["properties"]["path_glob"]["not"]["pattern"])
+    assert not wp_not.search("$HOME/.local/share/shadPS4/*")
+    assert wp_not.search("$HOME/../etc/passwd")
     bounds = {
         "authors": props["authors"], "matchers": props["matchers"], "achievements": props["achievements"],
         "regions": defs["memory_profile"]["properties"]["regions"],
         "producer_ids": defs["semantic_profile"]["properties"]["producer_ids"],
         "declared_stats": defs["semantic_profile"]["properties"]["declared_stats"],
         "sources": defs["observation_profile"]["properties"]["sources"],
+        "watch_paths": defs["observation_profile"]["properties"]["watch_paths"],
         "supported_modes": ach["supported_modes"],
     }
     for name, node in bounds.items():
         assert isinstance(node.get("maxItems"), int), f"manifest {name} must declare maxItems"
+
+    save_schema = json.loads((ROOT / "schemas" / "pack" / "save-rules.schema.json").read_text(encoding="utf-8"))
+    save_defs = save_schema["$defs"]
+    assert isinstance(save_schema["properties"]["watchers"].get("maxItems"), int)
+    assert isinstance(save_defs["save_watcher"]["properties"]["achievement_rules"].get("maxItems"), int)
+    assert isinstance(save_defs["save_watcher"]["properties"]["stat_rules"].get("maxItems"), int)
 
     obs = json.loads((ROOT / "schemas" / "external-observation" / "observation-record.schema.json").read_text(encoding="utf-8"))
     assert obs["properties"]["trust_tier"]["enum"] == ["LOCAL"], "Plane C records must be LOCAL only"
@@ -133,7 +152,7 @@ def check_schema_bounds() -> None:
         assert rec["trust_tier"] in obs["properties"]["trust_tier"]["enum"], "fixture trust_tier must satisfy the schema"
         if rec["evidence_class"] in restricted:
             assert rec["verification_state"] != "VERIFIED", "fixture must satisfy the VERIFIED conditional"
-    print("[OK] Verified manifest path patterns, maxItems bounds and Plane C LOCAL-only trust tier")
+    print("[OK] Verified manifest, save-rules patterns, maxItems bounds and Plane C LOCAL-only trust tier")
 
 
 def check_markdown_links() -> None:
@@ -209,6 +228,76 @@ def check_fixtures_and_security() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
 
+        # Positive: Stage 1 multi-matcher + declarative save rules pack
+        stage1_manifest = {
+            "manifest_version": "0.1.0",
+            "pack_id": "test.stage1.declarative",
+            "canonical_game_id": "test.stage1",
+            "title": "Stage 1 Declarative Test",
+            "matchers": [
+                {"matcher_type": "executable", "value": "game.exe", "os": "windows", "launcher": "playnite"},
+                {"matcher_type": "app_id", "value": "12345", "os": "steamos", "launcher": "steam"},
+                {"matcher_type": "save_path_glob", "value": "**/save*.json", "os": "linux"},
+            ],
+            "profiles": {
+                "observation": {
+                    "enabled": True,
+                    "sources": [{"source_type": "save_file", "evidence_class": "LOCALLY_OBSERVED", "file_glob": "**/save*.json"}],
+                    "rules_file": "rules/save.json",
+                    "watch_paths": [{"os": "linux", "launcher": "recomp", "path_glob": "$HOME/.local/share/testgame/*"}],
+                }
+            },
+            "achievements": [{
+                "canonical_achievement_id": "ach_first",
+                "title": "First Flag",
+                "description": "Unlock via save rule.",
+                "points": 10,
+                "supported_modes": ["STANDARD"],
+                "minimum_trust_tier": "LOCAL",
+            }],
+        }
+        stage1_rules = {
+            "schema_version": "0.1.0",
+            "canonical_game_id": "test.stage1",
+            "watchers": [{
+                "id": "main_json",
+                "source_type": "save_file",
+                "format": "json",
+                "file_glob": "**/save*.json",
+                "max_file_size_bytes": 1048576,
+                "achievement_rules": [{
+                    "achievement_id": "ach_first",
+                    "conditions": [{"path": "progress.cleared", "value_type": "bool", "op": "==", "value": True}],
+                }],
+            }],
+        }
+        p_stage1 = tmp / "stage1_positive.onehundo"
+        with zipfile.ZipFile(p_stage1, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", json.dumps(stage1_manifest))
+            zf.writestr("rules/save.json", json.dumps(stage1_rules))
+        run_validator("pack", p_stage1, expect_ok=True)
+
+        # Negative Stage 1: declarative save rules with traversal file_glob
+        bad_rules = {
+            "schema_version": "0.1.0",
+            "canonical_game_id": "test.stage1",
+            "watchers": [{
+                "id": "bad_glob",
+                "source_type": "save_file",
+                "format": "json",
+                "file_glob": "../secret.json",
+                "achievement_rules": [{
+                    "achievement_id": "ach_first",
+                    "conditions": [{"path": "x", "value_type": "bool", "op": "==", "value": True}],
+                }],
+            }],
+        }
+        p_bad_rules = tmp / "bad_save_rules.onehundo"
+        with zipfile.ZipFile(p_bad_rules, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", json.dumps(stage1_manifest))
+            zf.writestr("rules/save.json", json.dumps(bad_rules))
+        run_validator("pack", p_bad_rules, expect_ok=False)
+
         # 1. Zip-slip traversal
         p_slip = tmp / "zip_slip.onehundo"
         with zipfile.ZipFile(p_slip, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -265,7 +354,7 @@ def check_fixtures_and_security() -> None:
         }), encoding="utf-8")
         run_validator("observation", p_bad_obs, expect_ok=False)
 
-    print("[OK] Verified 6 negative security & malformed conformance cases rejected")
+    print("[OK] Verified 7 negative security & malformed conformance cases rejected")
 
 
 def main() -> int:

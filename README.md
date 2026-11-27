@@ -103,12 +103,13 @@ onehundo-protocol/
 
 ---
 
-## Current Status (Phases 0–3 Verified · Ready for Phase 4)
+## Current Status (Phases 0–3 & Stage 1 Verified · Remaining Phase 4 Next)
 
 - **Phase 0 & Phase 1 (Complete):** Strict C99 header (`onehundo.h`), JSON Schema 2020-12 & OpenAPI 3.1 contracts, `onehundo-validate`, conformance fixtures, and Plane B end-to-end integration (`bbport` -> `onehundod` -> `onehundo-platform`).
 - **Phase 1.5 (Complete):** POSIX/Win32 IPC transport updates (`$ONEHUNDO_SOCKET` / `$XDG_RUNTIME_DIR/onehundo.sock` discovery before `/tmp/onehundo.sock`, buffered `EVENT_ACK`s, `HELLO` `progression_mode`/`trust_tier`), ThreadSanitizer-clean atomic `slot_state` reads in `reference/c/transport_stub.c`, and Rust Clippy-clean `onehundo-validate`.
 - **Phase 2 & Phase 3 (Complete):** `v0.1.0` contracts remained frozen while `onehundo-client` and `onehundo-platform` verified Plane A shared-memory ring `rcheevos` cross-runtime portability and Plane C external observation (`Goldberg`, `RPCS3`/`shadPS4`, Longshot `progress.sav`, Game Health & Pack Browser UI, desktop notifications, and `Self-reported` OAP projection).
-- **Phase 4 (Next):** Maintain `v0.1.0` backward compatibility while supporting community `.onehundo` pack authoring, launch integrations, Ed25519 pack signature verification, async rarity workers, and the `COMPETITIVE` trust lane.
+- **Phase 4 Stage 1 (Complete):** Added `schemas/pack/save-rules.schema.json` (declarative binary/JSON/INI/KV save watchers and `template` placeholder safety) and additive `manifest.schema.json` / `openapi.yaml` Stage 1 extensions (`executable`, `app_id`, `save_path_glob`, `steamos`/`android`/`ios`, optional `os`/`launcher` query params on `GET /v1/packs/resolve`) while preserving full `v0.1.0` backward compatibility.
+- **Phase 4 Remaining (Next):** Support community `.onehundo` pack authoring helpers, Ed25519 pack signature verification, async rarity workers, and the `COMPETITIVE` trust lane.
 
 ---
 

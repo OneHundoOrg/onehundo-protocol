@@ -3,7 +3,7 @@
 > **Organization:** `OneHundoOrg` (`onehundo.org`)  
 > **Repository:** [`onehundo-protocol`](https://github.com/OneHundoOrg/onehundo-protocol) (Public, dual `MIT OR Apache-2.0`)  
 > **Role:** Authoritative protocol definitions, wire/event/pack schemas, strict C99 public SDK (`onehundo.h`), reference implementations, and conformance suite.  
-> **Status:** Phases 0–3 Verified — `v0.1.0` contracts frozen across `onehundo-client` and `onehundo-platform`; ready for Phase 4.
+> **Status:** Phases 0–3 & Phase 4 Stage 1 Verified — backward-compatible `v0.1.0` contracts with additive Stage 1 multi-matcher & `save-rules.schema.json` support; remaining Phase 4 next.
 
 ---
 
@@ -115,6 +115,9 @@ onehundo-protocol/
 
 ### [x] Phase 2 & Phase 3 — Completed (`v0.1.0` Frozen)
 - Maintained `v0.1.0` ABI and schema stability with zero breaking changes while `onehundo-client` and `onehundo-platform` verified Plane A shared-memory ring `rcheevos` evaluation, dual-runtime cross-portability, and Plane C isolated external importers (`OBSERVATION_IMPORT` -> `Self-reported` OAP projection).
+
+### [x] Phase 4 Stage 1 — Additive Save-Rules & Multi-Matcher Extensions
+- Added `schemas/pack/save-rules.schema.json`, `executable`/`app_id`/`save_path_glob` matchers, `steamos`/`android`/`ios` platform OS values, and optional `os`/`launcher` query scoping on `/v1/packs/resolve`, enforced by `onehundo-validate` and `conformance/tests/run_conformance.py`.
 
 ### [ ] Phase 4 Guardrails (Community Authoring, Signed Packs & `COMPETITIVE` Lane)
 - Maintain `v0.1.0` ABI and schema backward compatibility as `onehundo-client` and `onehundo-platform` add community pack authoring, launch integrations, async rarity workers, Ed25519 pack signing, and `COMPETITIVE` lane enforcement.

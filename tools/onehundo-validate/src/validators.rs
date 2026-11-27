@@ -37,9 +37,23 @@ const MATCHER_TYPES: &[&str] = &[
     "platform_id",
     "sidecar_uuid",
     "asset_archive_hash",
+    "executable",
+    "app_id",
+    "save_path_glob",
+];
+const MATCHER_OS_VALUES: &[&str] = &[
+    "windows", "linux", "macos", "steamos", "android", "ios", "bsd", "any",
+];
+const SAVE_WATCHER_FORMATS: &[&str] = &["binary", "json", "ini", "kv", "template"];
+const SAVE_VALUE_TYPES: &[&str] = &[
+    "u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64", "f32", "f64", "bool", "string",
+    "bitmask",
+];
+const SAVE_CONDITION_OPS: &[&str] = &[
+    "==", "!=", ">=", ">", "<=", "<", "nonzero", "bit_set", "bit_clear", "contains",
 ];
 
-// Contract bounds mirrored from schemas/pack/manifest.schema.json.
+// Contract bounds mirrored from schemas/pack/manifest.schema.json and save-rules.schema.json.
 const MAX_AUTHORS: usize = 32;
 const MAX_MATCHERS: usize = 64;
 const MAX_ACHIEVEMENTS: usize = 5000;
@@ -47,6 +61,10 @@ const MAX_REGIONS: usize = 64;
 const MAX_PRODUCER_IDS: usize = 32;
 const MAX_DECLARED_STATS: usize = 256;
 const MAX_OBSERVATION_SOURCES: usize = 32;
+const MAX_WATCH_PATHS: usize = 32;
+const MAX_SAVE_WATCHERS: usize = 32;
+const MAX_SAVE_CONDITIONS: usize = 32;
+const MAX_SAVE_FILE_BYTES: i64 = 67_108_864;
 const MAX_PATH_LEN: usize = 256;
 
 fn check_max_items(arr: &[JsonValue], max: usize, ctx: &str) -> Result<(), String> {
@@ -117,6 +135,17 @@ pub fn is_safe_glob(glob: &str) -> bool {
     !glob.split('/').any(|seg| seg == "..")
 }
 
+/// `watch_paths[].path_glob`: OS-scoped path template (may start with `/`, `$HOME`, `%APPDATA%`),
+/// never allows `..` traversal segments or NUL bytes.
+pub fn is_safe_watch_path_glob(glob: &str) -> bool {
+    if glob.is_empty() || glob.len() > MAX_PATH_LEN || glob.contains('\0') {
+        return false;
+    }
+    !glob
+        .split(['/', '\\'])
+        .any(|seg| seg == "..")
+}
+
 fn req_str<'a>(obj: &'a BTreeMap<String, JsonValue>, key: &str, ctx: &str) -> Result<&'a str, String> {
     obj.get(key)
         .and_then(|v| v.as_str())
@@ -178,6 +207,156 @@ fn is_valid_canonical_id(s: &str) -> bool {
         .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'_' | b'-'))
 }
 
+fn validate_save_locator(
+    obj: &BTreeMap<String, JsonValue>,
+    format: &str,
+    ctx: &str,
+) -> Result<(), String> {
+    match format {
+        "binary" => {
+            let off = req_int(obj, "offset", ctx)?;
+            if !(0..=MAX_SAVE_FILE_BYTES).contains(&off) {
+                return Err(format!("{}: offset {} out of range", ctx, off));
+            }
+        }
+        "json" => {
+            let p = req_str(obj, "path", ctx)?;
+            check_max_len(p, MAX_PATH_LEN, &format!("{}.path", ctx))?;
+        }
+        "ini" | "kv" => {
+            let k = req_str(obj, "key", ctx)?;
+            check_max_len(k, 128, &format!("{}.key", ctx))?;
+            if let Some(sec) = obj.get("section") {
+                let s = sec
+                    .as_str()
+                    .ok_or_else(|| format!("{}: section must be a string", ctx))?;
+                check_max_len(s, 128, &format!("{}.section", ctx))?;
+            }
+        }
+        "template" => {}
+        other => return Err(format!("{}: unsupported save format '{}'", ctx, other)),
+    }
+    Ok(())
+}
+
+pub fn validate_save_rules_json_str(content: &str, expected_game_id: &str) -> Result<usize, String> {
+    let val = parse_json(content).map_err(|e| format!("save rules json: {}", e))?;
+    let obj = val
+        .as_object()
+        .ok_or_else(|| "save rules must be a JSON object".to_string())?;
+    let ver = req_str(obj, "schema_version", "save_rules")?;
+    if ver != "0.1.0" {
+        return Err(format!("save_rules: unsupported schema_version '{}'", ver));
+    }
+    let game_id = req_str(obj, "canonical_game_id", "save_rules")?;
+    if !is_valid_canonical_id(game_id) {
+        return Err(format!("save_rules: invalid canonical_game_id '{}'", game_id));
+    }
+    if game_id != expected_game_id {
+        return Err(format!(
+            "save_rules: canonical_game_id '{}' does not match manifest '{}'",
+            game_id, expected_game_id
+        ));
+    }
+    let watchers = obj
+        .get("watchers")
+        .and_then(|v| v.as_array())
+        .filter(|a| !a.is_empty())
+        .ok_or_else(|| "save_rules: 'watchers' must be a non-empty array".to_string())?;
+    check_max_items(watchers, MAX_SAVE_WATCHERS, "save_rules.watchers")?;
+
+    for (w_idx, w) in watchers.iter().enumerate() {
+        let wctx = format!("save_rules.watchers[{}]", w_idx);
+        let w_obj = w
+            .as_object()
+            .ok_or_else(|| format!("{} must be an object", wctx))?;
+        req_str(w_obj, "id", &wctx)?;
+        req_enum(
+            w_obj,
+            "source_type",
+            &["save_file", "emulator_sram", "log_parser"],
+            &wctx,
+        )?;
+        let format = req_enum(w_obj, "format", SAVE_WATCHER_FORMATS, &wctx)?;
+        let glob = req_str(w_obj, "file_glob", &wctx)?;
+        if !is_safe_glob(glob) {
+            return Err(format!("{}: unsafe file_glob '{}'", wctx, glob));
+        }
+        if let Some(max_sz) = w_obj.get("max_file_size_bytes") {
+            let sz = max_sz
+                .as_i64()
+                .ok_or_else(|| format!("{}: max_file_size_bytes must be an integer", wctx))?;
+            if !(1..=MAX_SAVE_FILE_BYTES).contains(&sz) {
+                return Err(format!(
+                    "{}: max_file_size_bytes {} out of bounds 1..={}",
+                    wctx, sz, MAX_SAVE_FILE_BYTES
+                ));
+            }
+        }
+        if let Some(magic_hex) = w_obj.get("magic_hex") {
+            let s = magic_hex
+                .as_str()
+                .ok_or_else(|| format!("{}: magic_hex must be a string", wctx))?;
+            if s.len() < 2 || s.len() > 64 || s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(format!("{}: invalid magic_hex '{}'", wctx, s));
+            }
+        }
+        if let Some(rules) = optional_array(w_obj, "achievement_rules", &wctx)? {
+            check_max_items(rules, MAX_ACHIEVEMENTS, &format!("{}.achievement_rules", wctx))?;
+            for (r_idx, r) in rules.iter().enumerate() {
+                let rctx = format!("{}.achievement_rules[{}]", wctx, r_idx);
+                let r_obj = r
+                    .as_object()
+                    .ok_or_else(|| format!("{} must be an object", rctx))?;
+                let ach_id = req_str(r_obj, "achievement_id", &rctx)?;
+                if !is_valid_canonical_id(ach_id) {
+                    return Err(format!("{}: invalid achievement_id '{}'", rctx, ach_id));
+                }
+                let conds = r_obj
+                    .get("conditions")
+                    .and_then(|v| v.as_array())
+                    .filter(|a| !a.is_empty())
+                    .ok_or_else(|| format!("{}: 'conditions' must be non-empty array", rctx))?;
+                check_max_items(conds, MAX_SAVE_CONDITIONS, &format!("{}.conditions", rctx))?;
+                for (c_idx, c) in conds.iter().enumerate() {
+                    let cctx = format!("{}.conditions[{}]", rctx, c_idx);
+                    let c_obj = c
+                        .as_object()
+                        .ok_or_else(|| format!("{} must be an object", cctx))?;
+                    req_enum(c_obj, "value_type", SAVE_VALUE_TYPES, &cctx)?;
+                    let op = req_enum(c_obj, "op", SAVE_CONDITION_OPS, &cctx)?;
+                    if let Some(bit_val) = c_obj.get("bit") {
+                        let bit = bit_val
+                            .as_i64()
+                            .ok_or_else(|| format!("{}: bit must be integer", cctx))?;
+                        if !(0..=63).contains(&bit) {
+                            return Err(format!("{}: bit {} out of range 0..=63", cctx, bit));
+                        }
+                    } else if matches!(op, "bit_set" | "bit_clear") {
+                        return Err(format!("{}: op '{}' requires 'bit' (0..=63)", cctx, op));
+                    }
+                    validate_save_locator(c_obj, format, &cctx)?;
+                }
+            }
+        }
+        if let Some(stats) = optional_array(w_obj, "stat_rules", &wctx)? {
+            check_max_items(stats, MAX_DECLARED_STATS, &format!("{}.stat_rules", wctx))?;
+            for (s_idx, st) in stats.iter().enumerate() {
+                let sctx = format!("{}.stat_rules[{}]", wctx, s_idx);
+                let s_obj = st
+                    .as_object()
+                    .ok_or_else(|| format!("{} must be an object", sctx))?;
+                let key = req_str(s_obj, "stat_key", &sctx)?;
+                check_max_len(key, 128, &format!("{}.stat_key", sctx))?;
+                req_enum(s_obj, "value_type", SAVE_VALUE_TYPES, &sctx)?;
+                validate_save_locator(s_obj, format, &sctx)?;
+            }
+        }
+    }
+
+    Ok(watchers.len())
+}
+
 pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<String, Vec<u8>>>) -> Result<(), String> {
     let obj = val
         .as_object()
@@ -218,6 +397,16 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
         let ctx = format!("manifest.matchers[{}]", idx);
         req_enum(m_obj, "matcher_type", MATCHER_TYPES, &ctx)?;
         req_str(m_obj, "value", &ctx)?;
+        if m_obj.get("os").is_some() {
+            req_enum(m_obj, "os", MATCHER_OS_VALUES, &ctx)?;
+        }
+        if let Some(launcher) = m_obj.get("launcher") {
+            let s = launcher
+                .as_str()
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| format!("{}: 'launcher' must be a non-empty string", ctx))?;
+            check_max_len(s, 64, &format!("{}.launcher", ctx))?;
+        }
     }
 
     let profiles = obj
@@ -243,6 +432,49 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
                 .ok_or_else(|| format!("{}: 'rules_file' must be a string", pctx))?;
             if !is_safe_relative_path(rules) {
                 return Err(format!("{}: unsafe rules_file path '{}'", pctx, rules));
+            }
+            if pname == "observation" {
+                if let Some(entries) = archive_entries {
+                    let bytes = entries.get(rules).ok_or_else(|| {
+                        format!("{}: referenced rules_file '{}' missing from archive", pctx, rules)
+                    })?;
+                    let text = std::str::from_utf8(bytes)
+                        .map_err(|_| format!("{}: rules_file '{}' is not valid UTF-8", pctx, rules))?;
+                    validate_save_rules_json_str(text, game_id)?;
+                }
+            }
+        }
+        if pname == "memory" {
+            if let Some(ra) = p_obj.get("retroarch") {
+                let ra_obj = ra
+                    .as_object()
+                    .ok_or_else(|| "manifest.profiles.memory.retroarch must be an object".to_string())?;
+                if let Some(core) = ra_obj.get("core_name") {
+                    let c = core
+                        .as_str()
+                        .filter(|v| !v.is_empty())
+                        .ok_or_else(|| "memory.retroarch.core_name must be non-empty string".to_string())?;
+                    check_max_len(c, 64, "memory.retroarch.core_name")?;
+                }
+                if let Some(crc) = ra_obj.get("content_crc") {
+                    let s = crc
+                        .as_str()
+                        .ok_or_else(|| "memory.retroarch.content_crc must be a string".to_string())?;
+                    if s.len() != 8 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+                        return Err(format!("memory.retroarch.content_crc '{}' must be 8 hex chars", s));
+                    }
+                }
+                if let Some(poll) = ra_obj.get("poll_interval_ms") {
+                    let ms = poll
+                        .as_i64()
+                        .ok_or_else(|| "memory.retroarch.poll_interval_ms must be integer".to_string())?;
+                    if !(50..=10000).contains(&ms) {
+                        return Err(format!(
+                            "memory.retroarch.poll_interval_ms {} out of range 50..=10000",
+                            ms
+                        ));
+                    }
+                }
             }
         }
         if let Some(regions) = optional_array(p_obj, "regions", &pctx)? {
@@ -280,6 +512,27 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
                     if !is_safe_glob(glob) {
                         return Err(format!("{}.sources[{}]: unsafe file_glob '{}'", pctx, i, glob));
                     }
+                }
+            }
+        }
+        if let Some(watch_paths) = optional_array(p_obj, "watch_paths", &pctx)? {
+            check_max_items(watch_paths, MAX_WATCH_PATHS, &format!("{}.watch_paths", pctx))?;
+            for (i, wp) in watch_paths.iter().enumerate() {
+                let wp_ctx = format!("{}.watch_paths[{}]", pctx, i);
+                let wp_obj = wp
+                    .as_object()
+                    .ok_or_else(|| format!("{} must be an object", wp_ctx))?;
+                req_enum(wp_obj, "os", MATCHER_OS_VALUES, &wp_ctx)?;
+                let pg = req_str(wp_obj, "path_glob", &wp_ctx)?;
+                if !is_safe_watch_path_glob(pg) {
+                    return Err(format!("{}: unsafe path_glob '{}'", wp_ctx, pg));
+                }
+                if let Some(launcher) = wp_obj.get("launcher") {
+                    let s = launcher
+                        .as_str()
+                        .filter(|v| !v.is_empty())
+                        .ok_or_else(|| format!("{}: launcher must be non-empty string", wp_ctx))?;
+                    check_max_len(s, 64, &format!("{}.launcher", wp_ctx))?;
                 }
             }
         }

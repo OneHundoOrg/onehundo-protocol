@@ -64,6 +64,9 @@ paths:
               - platform_id
               - sidecar_uuid
               - asset_archive_hash
+              - executable
+              - app_id
+              - save_path_glob
         - name: value
           in: query
           required: true
@@ -77,6 +80,18 @@ paths:
           schema:
             type: string
             maxLength: 32
+        - name: os
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [windows, linux, macos, steamos, android, ios, bsd, any]
+        - name: launcher
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 64
       responses:
         '200':
           description: Matching pack resolved
@@ -241,7 +256,7 @@ components:
           maxLength: 32
         platform_os:
           type: string
-          enum: [linux, windows, macos, bsd]
+          enum: [linux, windows, macos, steamos, android, ios, bsd]
         architecture:
           type: string
           enum: [x86_64, aarch64, riscv64, x86]

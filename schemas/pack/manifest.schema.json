@@ -55,7 +55,7 @@
       "type": "array",
       "minItems": 1,
       "maxItems": 64,
-      "description": "Multi-identity matchers linking ROMs, recompilations, native builds, or store titles to this pack.",
+      "description": "Multi-identity matchers linking ROMs, recompilations, native builds, executables, save paths, or store titles to this pack.",
       "items": {
         "$ref": "#/$defs/identity_matcher"
       }
@@ -115,6 +115,11 @@
       ],
       "description": "Orthogonal evidence provenance class."
     },
+    "matcher_os": {
+      "type": "string",
+      "enum": ["windows", "linux", "macos", "steamos", "android", "ios", "bsd", "any"],
+      "description": "Optional OS scope for multi-platform matchers and watch paths."
+    },
     "identity_matcher": {
       "type": "object",
       "additionalProperties": false,
@@ -128,20 +133,36 @@
             "build_id",
             "platform_id",
             "sidecar_uuid",
-            "asset_archive_hash"
+            "asset_archive_hash",
+            "executable",
+            "app_id",
+            "save_path_glob"
           ],
           "description": "Type of runtime/artifact identity matcher."
         },
         "algorithm": {
           "type": "string",
-          "enum": ["sha256", "md5", "xxhash64", "uuid", "exact", "steam_appid", "psn_title_id"],
+          "enum": [
+            "sha256",
+            "md5",
+            "xxhash64",
+            "uuid",
+            "exact",
+            "steam_appid",
+            "psn_title_id",
+            "glob",
+            "gog_id",
+            "itch_id",
+            "playnite_id",
+            "launchbox_id"
+          ],
           "description": "Optional hash or identifier matching algorithm."
         },
         "value": {
           "type": "string",
           "minLength": 1,
           "maxLength": 256,
-          "description": "Expected hash, ID, or UUID string."
+          "description": "Expected hash, ID, executable name, glob, or UUID string."
         },
         "region": {
           "type": "string",
@@ -152,6 +173,15 @@
           "type": "string",
           "maxLength": 64,
           "description": "Optional game patch/revision tag."
+        },
+        "os": {
+          "$ref": "#/$defs/matcher_os"
+        },
+        "launcher": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Optional launcher or emulator identifier (e.g. playnite, launchbox, retroarch, shadps4, steam, flatpak)."
         }
       }
     },
@@ -195,6 +225,17 @@
           "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9._/-]*$",
           "not": { "pattern": "(^|/)\\.\\.?(/|$)" },
           "description": "Relative archive path to Plane A rules definition (no absolute paths, '.' or '..' segments)."
+        },
+        "retroarch": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional RetroArch network memory-watch configuration.",
+          "properties": {
+            "use_network_cmd": { "type": "boolean" },
+            "core_name": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "content_crc": { "type": "string", "pattern": "^[0-9a-fA-F]{8}$" },
+            "poll_interval_ms": { "type": "integer", "minimum": 50, "maximum": 10000 }
+          }
         }
       }
     },
@@ -260,6 +301,35 @@
                 "maxLength": 256,
                 "not": { "pattern": "(^/|^[A-Za-z]:|\\\\|(^|/)\\.\\.(/|$))" },
                 "description": "Glob relative to the watched directory: no absolute paths, drive letters, backslashes or '..' segments."
+              }
+            }
+          }
+        },
+        "rules_file": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9._/-]*$",
+          "not": { "pattern": "(^|/)\\.\\.?(/|$)" },
+          "description": "Relative archive path to declarative Plane C save-file or log parser rules (no absolute paths, '.' or '..' segments)."
+        },
+        "watch_paths": {
+          "type": "array",
+          "maxItems": 32,
+          "description": "Optional OS/launcher-scoped default save directory/file globs monitored by onehundod.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["os", "path_glob"],
+            "properties": {
+              "os": { "$ref": "#/$defs/matcher_os" },
+              "launcher": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "path_glob": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "not": { "pattern": "(^|/)\\.\\.(/|$)" },
+                "description": "OS-scoped save path pattern without '..' traversal segments."
               }
             }
           }

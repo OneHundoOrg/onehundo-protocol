@@ -8,9 +8,9 @@ mod tests {
     use super::deflate::crc32;
     use super::json::parse_json;
     use super::validators::{
-        is_safe_archive_path, is_safe_glob, is_safe_relative_path, validate_manifest,
-        validate_observation_json_str, validate_pack_bytes, validate_semantic_jsonl_str,
-        validate_sparse_jsonl_str,
+        is_safe_archive_path, is_safe_glob, is_safe_relative_path, is_safe_watch_path_glob,
+        validate_manifest, validate_observation_json_str, validate_pack_bytes,
+        validate_save_rules_json_str, validate_semantic_jsonl_str, validate_sparse_jsonl_str,
     };
 
     /// Minimal stored-entry ZIP builder for deterministic security unit tests.
@@ -98,6 +98,88 @@ mod tests {
     fn accepts_valid_pack() {
         let zip = build_test_zip(&[("manifest.json", VALID_MANIFEST.as_bytes(), 0o100644 << 16, 0)]);
         assert_eq!(validate_pack_bytes(&zip).unwrap(), 1);
+    }
+
+    #[test]
+    fn accepts_declarative_save_rules_and_multi_matchers() {
+        let manifest = r#"{
+            "manifest_version": "0.1.0",
+            "pack_id": "nintendo.oot.multi",
+            "canonical_game_id": "nintendo.oot",
+            "title": "The Legend of Zelda: Ocarina of Time",
+            "matchers": [
+                {"matcher_type": "executable", "value": "soh.exe", "os": "windows", "launcher": "playnite"},
+                {"matcher_type": "app_id", "value": "longshot-recomp", "os": "linux", "launcher": "recomp"},
+                {"matcher_type": "save_path_glob", "value": "**/progress.sav", "os": "steamos"}
+            ],
+            "profiles": {
+                "observation": {
+                    "enabled": true,
+                    "sources": [{"source_type": "save_file", "evidence_class": "LOCALLY_OBSERVED", "file_glob": "**/progress.sav"}],
+                    "rules_file": "rules/save.json",
+                    "watch_paths": [{"os": "linux", "launcher": "soh", "path_glob": "$HOME/.local/share/soh/*"}]
+                }
+            },
+            "achievements": [{
+                "canonical_achievement_id": "ach_deku_tree",
+                "title": "Inside the Deku Tree",
+                "description": "Obtain the Kokiri Emerald.",
+                "points": 15,
+                "supported_modes": ["STANDARD", "ENCORE"],
+                "minimum_trust_tier": "LOCAL"
+            }]
+        }"#;
+        let save_rules = r#"{
+            "schema_version": "0.1.0",
+            "canonical_game_id": "nintendo.oot",
+            "watchers": [{
+                "id": "oot_json",
+                "source_type": "save_file",
+                "format": "json",
+                "file_glob": "**/save/*.json",
+                "max_file_size_bytes": 1048576,
+                "achievement_rules": [{
+                    "achievement_id": "ach_deku_tree",
+                    "conditions": [{
+                        "path": "quest.kokiri_emerald",
+                        "value_type": "bool",
+                        "op": "==",
+                        "value": true
+                    }]
+                }]
+            }]
+        }"#;
+        let zip = build_test_zip(&[
+            ("manifest.json", manifest.as_bytes(), 0o100644 << 16, 0),
+            ("rules/save.json", save_rules.as_bytes(), 0o100644 << 16, 0),
+        ]);
+        assert_eq!(validate_pack_bytes(&zip).unwrap(), 2);
+    }
+
+    #[test]
+    fn rejects_unsafe_save_rules_or_mismatched_game_id() {
+        let bad_glob = r#"{
+            "schema_version": "0.1.0",
+            "canonical_game_id": "nintendo.oot",
+            "watchers": [{
+                "id": "bad",
+                "source_type": "save_file",
+                "format": "binary",
+                "file_glob": "../outside.sav",
+                "achievement_rules": [{
+                    "achievement_id": "ach_one",
+                    "conditions": [{"offset": 0, "value_type": "u8", "op": "nonzero"}]
+                }]
+            }]
+        }"#;
+        assert!(validate_save_rules_json_str(bad_glob, "nintendo.oot")
+            .unwrap_err()
+            .contains("unsafe file_glob"));
+        assert!(validate_save_rules_json_str(bad_glob, "other.game")
+            .unwrap_err()
+            .contains("does not match manifest"));
+        assert!(!is_safe_watch_path_glob("$HOME/../etc/passwd"));
+        assert!(is_safe_watch_path_glob("$HOME/.local/share/shadPS4/*"));
     }
 
     #[test]
