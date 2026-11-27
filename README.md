@@ -103,11 +103,12 @@ onehundo-protocol/
 
 ---
 
-## Current Status (Post-Phase 1.5 Baseline)
+## Current Status (Phases 0–3 Verified · Ready for Phase 4)
 
 - **Phase 0 & Phase 1 (Complete):** Strict C99 header (`onehundo.h`), JSON Schema 2020-12 & OpenAPI 3.1 contracts, `onehundo-validate`, conformance fixtures, and Plane B end-to-end integration (`bbport` -> `onehundod` -> `onehundo-platform`).
 - **Phase 1.5 (Complete):** POSIX/Win32 IPC transport updates (`$ONEHUNDO_SOCKET` / `$XDG_RUNTIME_DIR/onehundo.sock` discovery before `/tmp/onehundo.sock`, buffered `EVENT_ACK`s, `HELLO` `progression_mode`/`trust_tier`), ThreadSanitizer-clean atomic `slot_state` reads in `reference/c/transport_stub.c`, and Rust Clippy-clean `onehundo-validate`.
-- **Phase 2 (Next in `onehundo-client`):** `v0.1.0` contracts remain frozen while `onehundo-client` completes Plane A shared-memory ring consumption and `rcheevos` cross-runtime evaluation.
+- **Phase 2 & Phase 3 (Complete):** `v0.1.0` contracts remained frozen while `onehundo-client` and `onehundo-platform` verified Plane A shared-memory ring `rcheevos` cross-runtime portability and Plane C external observation (`Goldberg`, `RPCS3`/`shadPS4`, Longshot `progress.sav`, Game Health & Pack Browser UI, desktop notifications, and `Self-reported` OAP projection).
+- **Phase 4 (Next):** Maintain `v0.1.0` backward compatibility while supporting community `.onehundo` pack authoring, launch integrations, Ed25519 pack signature verification, async rarity workers, and the `COMPETITIVE` trust lane.
 
 ---
 

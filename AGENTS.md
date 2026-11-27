@@ -3,7 +3,7 @@
 > **Repository:** [`onehundo-protocol`](https://github.com/OneHundoOrg/onehundo-protocol) (Public, dual `MIT OR Apache-2.0`)  
 > **Organization:** `OneHundoOrg` (`onehundo.org`)  
 > **Role:** Authoritative protocol definitions, wire/event/pack schemas, strict C99 public SDK (`onehundo.h`), reference implementations, and conformance suite.  
-> **Current Phase:** Post-Phase 1.5 baseline verified (`v0.1.0` contracts frozen for Phase 2 entry in `onehundo-client`).  
+> **Current Phase:** Phases 0–3 verified (`v0.1.0` contracts frozen across `onehundo-client` and `onehundo-platform`; ready for **Phase 4 — Community Authoring, Launch Integrations, Rarity & Competitive Lane**).  
 > **Target Audience:** Autonomous AI agents and human contributors working within the OneHundo ecosystem.
 
 ---
@@ -25,7 +25,7 @@
 - **DO NOT** commit proprietary game dumps, ROMs, or copyrighted executable binaries into test fixtures.
 - **Canonical Pack Titles & Provenance:** User-facing pack `title` values should use clean canonical game titles without parenthetical runtime/emulator/launcher/recomp suffixes; distinguish ports and recompilations strictly in `pack_id`, `matchers`, and `producer_ids` (aligned with OAP `identifiers.md` §2.6).
 - **ALWAYS** preserve backwards compatibility when updating schemas or incrementing protocol versions.
-- **Phase 2 Guardrail:** As `onehundo-client` enters Phase 2 (Plane A shared-memory ring + `rcheevos` cross-runtime proof), keep `include/onehundo/onehundo.h` and `schemas/` stable; any required additive contract update must be validated here first before propagating to `onehundo-client` and `onehundo-platform`.
+- **Phase 4 Guardrail:** `v0.1.0` contracts remained frozen through Phases 2 and 3. As the ecosystem enters Phase 4 (community authoring, launch integrations, rarity workers, signed packs & `COMPETITIVE` lane), keep `include/onehundo/onehundo.h` and `schemas/` backward-compatible; any required additive contract update must be validated here first before propagating to `onehundo-client` and `onehundo-platform`.
 
 ---
 

@@ -3,7 +3,7 @@
 > **Organization:** `OneHundoOrg` (`onehundo.org`)  
 > **Repository:** [`onehundo-protocol`](https://github.com/OneHundoOrg/onehundo-protocol) (Public, dual `MIT OR Apache-2.0`)  
 > **Role:** Authoritative protocol definitions, wire/event/pack schemas, strict C99 public SDK (`onehundo.h`), reference implementations, and conformance suite.  
-> **Status:** Post-Phase 1.5 Baseline Complete — `v0.1.0` contracts frozen and verified for Phase 2 Plane A cross-runtime proof in `onehundo-client`.
+> **Status:** Phases 0–3 Verified — `v0.1.0` contracts frozen across `onehundo-client` and `onehundo-platform`; ready for Phase 4.
 
 ---
 
@@ -113,6 +113,9 @@ onehundo-protocol/
 - **TSan & Clippy Cleanliness:** Atomic `slot_state` reads in `reference/c/transport_stub.c` (TSan-clean) and Rust 1.100 Clippy-clean `tools/onehundo-validate/`.
 - **Licensing & Attribution:** Updated dual `MIT OR Apache-2.0` copyright and Cargo repository metadata to `OneHundoOrg` (`https://github.com/OneHundoOrg/onehundo-protocol`).
 
-### [ ] Phase 2 Guardrails (Upstream Stability During `onehundo-client` Plane A Proof)
-- Maintain `v0.1.0` ABI and schema stability while `onehundo-client` wires Plane A shared-memory ring evaluation (`rcheevos`) and cross-runtime portability harnesses.
-- Any protocol change discovered during Phase 2 must land here first, pass CMake/CTest + TSan + `cargo test` + `cargo clippy` + `run_conformance.py`, and be propagated cleanly to `onehundo-client` and `onehundo-platform`.
+### [x] Phase 2 & Phase 3 — Completed (`v0.1.0` Frozen)
+- Maintained `v0.1.0` ABI and schema stability with zero breaking changes while `onehundo-client` and `onehundo-platform` verified Plane A shared-memory ring `rcheevos` evaluation, dual-runtime cross-portability, and Plane C isolated external importers (`OBSERVATION_IMPORT` -> `Self-reported` OAP projection).
+
+### [ ] Phase 4 Guardrails (Community Authoring, Signed Packs & `COMPETITIVE` Lane)
+- Maintain `v0.1.0` ABI and schema backward compatibility as `onehundo-client` and `onehundo-platform` add community pack authoring, launch integrations, async rarity workers, Ed25519 pack signing, and `COMPETITIVE` lane enforcement.
+- Any protocol change required during Phase 4 must land here first, pass CMake/CTest + TSan + `cargo test` + `cargo clippy` + `run_conformance.py`, and be propagated cleanly to `onehundo-client` and `onehundo-platform`.
