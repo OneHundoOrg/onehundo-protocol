@@ -39,6 +39,84 @@ const MATCHER_TYPES: &[&str] = &[
     "asset_archive_hash",
 ];
 
+// Contract bounds mirrored from schemas/pack/manifest.schema.json.
+const MAX_AUTHORS: usize = 32;
+const MAX_MATCHERS: usize = 64;
+const MAX_ACHIEVEMENTS: usize = 5000;
+const MAX_REGIONS: usize = 64;
+const MAX_PRODUCER_IDS: usize = 32;
+const MAX_DECLARED_STATS: usize = 256;
+const MAX_OBSERVATION_SOURCES: usize = 32;
+const MAX_PATH_LEN: usize = 256;
+
+fn check_max_items(arr: &[JsonValue], max: usize, ctx: &str) -> Result<(), String> {
+    if arr.len() > max {
+        return Err(format!("{}: {} items exceeds maxItems {}", ctx, arr.len(), max));
+    }
+    Ok(())
+}
+
+fn check_max_len(s: &str, max: usize, ctx: &str) -> Result<(), String> {
+    if s.chars().count() > max {
+        return Err(format!("{}: length exceeds maxLength {}", ctx, max));
+    }
+    Ok(())
+}
+
+fn optional_array<'a>(obj: &'a BTreeMap<String, JsonValue>, key: &str, ctx: &str) -> Result<Option<&'a [JsonValue]>, String> {
+    match obj.get(key) {
+        None => Ok(None),
+        Some(v) => v
+            .as_array()
+            .map(Some)
+            .ok_or_else(|| format!("{}: '{}' must be an array", ctx, key)),
+    }
+}
+
+/// One archive path segment as the schema allows it: starts with a letter, digit, '_' or '-'
+/// (so never '.', '..' or empty), then letters, digits, '.', '_' or '-'.
+fn is_safe_segment(seg: &str) -> bool {
+    let mut bytes = seg.bytes();
+    match bytes.next() {
+        Some(b) if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' => {}
+        _ => return false,
+    }
+    bytes.all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// `icon_path` / `module_path`: `<prefix>/<seg>/.../<seg>.<ext>` with every segment safe.
+pub fn is_safe_archive_path(path: &str, prefix: &str, exts: &[&str]) -> bool {
+    if path.len() > MAX_PATH_LEN {
+        return false;
+    }
+    let rest = match path.strip_prefix(prefix).and_then(|r| r.strip_prefix('/')) {
+        Some(r) => r,
+        None => return false,
+    };
+    let lower = rest.to_ascii_lowercase();
+    if !exts.iter().any(|e| lower.ends_with(&format!(".{}", e))) {
+        return false;
+    }
+    rest.split('/').all(is_safe_segment)
+}
+
+/// `rules_file`: a relative archive path with no absolute prefix and no '.' / '..' / empty segments.
+pub fn is_safe_relative_path(path: &str) -> bool {
+    !path.is_empty() && path.len() <= MAX_PATH_LEN && path.split('/').all(is_safe_segment)
+}
+
+/// `file_glob`: relative to the watched directory: no absolute path, drive letter, backslash or '..'.
+pub fn is_safe_glob(glob: &str) -> bool {
+    if glob.is_empty() || glob.len() > MAX_PATH_LEN || glob.starts_with('/') || glob.contains('\\') {
+        return false;
+    }
+    let b = glob.as_bytes();
+    if b.len() >= 2 && b[1] == b':' && b[0].is_ascii_alphabetic() {
+        return false;
+    }
+    !glob.split('/').any(|seg| seg == "..")
+}
+
 fn req_str<'a>(obj: &'a BTreeMap<String, JsonValue>, key: &str, ctx: &str) -> Result<&'a str, String> {
     obj.get(key)
         .and_then(|v| v.as_str())
@@ -122,11 +200,16 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
 
     req_str(obj, "title", "manifest")?;
 
+    if let Some(authors) = optional_array(obj, "authors", "manifest")? {
+        check_max_items(authors, MAX_AUTHORS, "manifest.authors")?;
+    }
+
     let matchers = obj
         .get("matchers")
         .and_then(|v| v.as_array())
         .filter(|a| !a.is_empty())
         .ok_or_else(|| "manifest: 'matchers' must be a non-empty array".to_string())?;
+    check_max_items(matchers, MAX_MATCHERS, "manifest.matchers")?;
 
     for (idx, m) in matchers.iter().enumerate() {
         let m_obj = m
@@ -153,6 +236,53 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
         if p_obj.get("enabled").and_then(|v| v.as_bool()).is_none() {
             return Err(format!("manifest.profiles.{}: missing boolean 'enabled'", pname));
         }
+        let pctx = format!("manifest.profiles.{}", pname);
+        if let Some(rules) = p_obj.get("rules_file") {
+            let rules = rules
+                .as_str()
+                .ok_or_else(|| format!("{}: 'rules_file' must be a string", pctx))?;
+            if !is_safe_relative_path(rules) {
+                return Err(format!("{}: unsafe rules_file path '{}'", pctx, rules));
+            }
+        }
+        if let Some(regions) = optional_array(p_obj, "regions", &pctx)? {
+            check_max_items(regions, MAX_REGIONS, &format!("{}.regions", pctx))?;
+            for (i, r) in regions.iter().enumerate() {
+                if let Some(name) = r.as_object().and_then(|o| o.get("region_name")).and_then(|v| v.as_str()) {
+                    check_max_len(name, 64, &format!("{}.regions[{}].region_name", pctx, i))?;
+                }
+            }
+        }
+        if let Some(ids) = optional_array(p_obj, "producer_ids", &pctx)? {
+            check_max_items(ids, MAX_PRODUCER_IDS, &format!("{}.producer_ids", pctx))?;
+            for (i, id) in ids.iter().enumerate() {
+                let id = id
+                    .as_str()
+                    .ok_or_else(|| format!("{}.producer_ids[{}] must be a string", pctx, i))?;
+                check_max_len(id, 128, &format!("{}.producer_ids[{}]", pctx, i))?;
+            }
+        }
+        if let Some(stats) = optional_array(p_obj, "declared_stats", &pctx)? {
+            check_max_items(stats, MAX_DECLARED_STATS, &format!("{}.declared_stats", pctx))?;
+            for (i, st) in stats.iter().enumerate() {
+                if let Some(key) = st.as_object().and_then(|o| o.get("key")).and_then(|v| v.as_str()) {
+                    check_max_len(key, 128, &format!("{}.declared_stats[{}].key", pctx, i))?;
+                }
+            }
+        }
+        if let Some(sources) = optional_array(p_obj, "sources", &pctx)? {
+            check_max_items(sources, MAX_OBSERVATION_SOURCES, &format!("{}.sources", pctx))?;
+            for (i, src) in sources.iter().enumerate() {
+                if let Some(glob) = src.as_object().and_then(|o| o.get("file_glob")) {
+                    let glob = glob
+                        .as_str()
+                        .ok_or_else(|| format!("{}.sources[{}].file_glob must be a string", pctx, i))?;
+                    if !is_safe_glob(glob) {
+                        return Err(format!("{}.sources[{}]: unsafe file_glob '{}'", pctx, i, glob));
+                    }
+                }
+            }
+        }
     }
 
     let achievements = obj
@@ -160,6 +290,7 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
         .and_then(|v| v.as_array())
         .filter(|a| !a.is_empty())
         .ok_or_else(|| "manifest: 'achievements' must be a non-empty array".to_string())?;
+    check_max_items(achievements, MAX_ACHIEVEMENTS, "manifest.achievements")?;
 
     for (idx, ach) in achievements.iter().enumerate() {
         let ctx = format!("manifest.achievements[{}]", idx);
@@ -181,6 +312,7 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
             .and_then(|v| v.as_array())
             .filter(|a| !a.is_empty())
             .ok_or_else(|| format!("{}: 'supported_modes' must be non-empty array", ctx))?;
+        let mut seen_modes: Vec<&str> = Vec::new();
         for mode in modes {
             let ms = mode
                 .as_str()
@@ -188,9 +320,16 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
             if !PROGRESSION_MODES.contains(&ms) {
                 return Err(format!("{}: invalid progression_mode '{}'", ctx, ms));
             }
+            if seen_modes.contains(&ms) {
+                return Err(format!("{}: duplicate supported_modes item '{}'", ctx, ms));
+            }
+            seen_modes.push(ms);
         }
         req_enum(a_obj, "minimum_trust_tier", TRUST_TIERS, &ctx)?;
         if let Some(icon_path) = a_obj.get("icon_path").and_then(|v| v.as_str()) {
+            if !is_safe_archive_path(icon_path, "assets", &["png", "jpg", "webp"]) {
+                return Err(format!("{}: unsafe or invalid icon_path '{}'", ctx, icon_path));
+            }
             if let Some(entries) = archive_entries {
                 if !entries.contains_key(icon_path) {
                     return Err(format!("{}: referenced icon_path '{}' missing from archive", ctx, icon_path));
@@ -204,7 +343,7 @@ pub fn validate_manifest(val: &JsonValue, archive_entries: Option<&BTreeMap<Stri
             .as_object()
             .ok_or_else(|| "manifest.wasm_sandbox must be an object".to_string())?;
         let mod_path = req_str(w_obj, "module_path", "manifest.wasm_sandbox")?;
-        if !mod_path.starts_with("rules/") || !mod_path.ends_with(".wasm") {
+        if !is_safe_archive_path(mod_path, "rules", &["wasm"]) {
             return Err(format!("manifest.wasm_sandbox: invalid module_path '{}'", mod_path));
         }
         let mem = req_int(w_obj, "max_memory_bytes", "manifest.wasm_sandbox")?;
@@ -485,6 +624,16 @@ pub fn validate_observation_json_str(content: &str) -> Result<usize, String> {
         req_str(obj, "key", &ctx)?;
         // Plane C MUST NOT use live event evidence classes
         validate_orthogonal_dimensions(obj, true, &ctx)?;
+        // Plane C is passive evidence: always LOCAL, and only platform-confirmed evidence may be VERIFIED.
+        req_enum(obj, "trust_tier", &["LOCAL"], &ctx)?;
+        let evidence = req_str(obj, "evidence_class", &ctx)?;
+        let verification = req_str(obj, "verification_state", &ctx)?;
+        if verification == "VERIFIED" && evidence != "PLATFORM_CONFIRMED" {
+            return Err(format!(
+                "{}: verification_state VERIFIED requires evidence_class PLATFORM_CONFIRMED (got {})",
+                ctx, evidence
+            ));
+        }
     }
     Ok(records.len())
 }

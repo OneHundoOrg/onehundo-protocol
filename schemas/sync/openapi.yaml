@@ -41,6 +41,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /v1/packs/resolve:
     get:
@@ -86,6 +90,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /v1/sync/events:
     post:
@@ -119,6 +125,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
   /v1/progression/{canonical_game_id}:
     get:
@@ -150,8 +160,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
 
 components:
+  responses:
+    PayloadTooLarge:
+      description: >
+        Request body exceeds the endpoint's byte limit (POST /v1/sync/events: 2 MiB;
+        POST /v1/devices/register: 16 KiB). The body is refused before parsing; nothing is stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: >
+        Rate limited (per client address on every /v1 route, per unauthenticated registration
+        address, and per player on POST /v1/sync/events). Nothing is stored; retry the same batch
+        after Retry-After seconds. Batches are idempotent, so a retry never double-counts.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   securitySchemes:
     DeviceBearerAuth:
       type: http
@@ -272,8 +309,12 @@ components:
           maxLength: 320
         canonical_game_id:
           type: string
+          pattern: '^[a-z0-9][a-z0-9._-]{1,127}$'
+          maxLength: 128
         producer_id:
           type: string
+          minLength: 1
+          maxLength: 128
         session_id:
           type: string
           format: uuid
@@ -285,12 +326,17 @@ components:
           enum: [STAT_SET, STAT_INC, STATE_OBSERVE, UNLOCK_REQUEST, OBSERVATION_IMPORT]
         key:
           type: string
+          minLength: 1
+          maxLength: 128
         int_value:
           type: integer
+          minimum: -9223372036854775808
+          maximum: 9223372036854775807
         float_value:
           type: number
         string_value:
           type: string
+          maxLength: 512
         occurred_at:
           type: string
           format: date-time
@@ -329,6 +375,9 @@ components:
       properties:
         idempotency_key:
           type: string
+          description: Echoes the request item's idempotency_key, so it has the same bounds.
+          minLength: 3
+          maxLength: 320
         receipt_status:
           $ref: '#/components/schemas/ReceiptStatus'
         acceptance_status:
@@ -339,6 +388,7 @@ components:
           type:
             - string
             - 'null'
+          maxLength: 512
 
     SyncEventsResponse:
       type: object
@@ -352,6 +402,7 @@ components:
           $ref: '#/components/schemas/ReceiptStatus'
         results:
           type: array
+          maxItems: 500
           items:
             $ref: '#/components/schemas/SyncEventResult'
 
@@ -403,5 +454,9 @@ components:
       properties:
         code:
           type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[A-Z][A-Z0-9_]*$'
         message:
           type: string
+          maxLength: 512

@@ -43,6 +43,7 @@
     },
     "authors": {
       "type": "array",
+      "maxItems": 32,
       "items": {
         "type": "string",
         "minLength": 1,
@@ -53,6 +54,7 @@
     "matchers": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 64,
       "description": "Multi-identity matchers linking ROMs, recompilations, native builds, or store titles to this pack.",
       "items": {
         "$ref": "#/$defs/identity_matcher"
@@ -78,6 +80,7 @@
     "achievements": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 5000,
       "items": {
         "$ref": "#/$defs/achievement_definition"
       },
@@ -173,12 +176,13 @@
         "regions": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 64,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["region_name", "guest_base_address", "size_bytes"],
             "properties": {
-              "region_name": { "type": "string", "minLength": 1 },
+              "region_name": { "type": "string", "minLength": 1, "maxLength": 64 },
               "guest_base_address": { "type": "string", "pattern": "^0x[0-9a-fA-F]+$" },
               "size_bytes": { "type": "integer", "minimum": 1 }
             }
@@ -186,7 +190,11 @@
         },
         "rules_file": {
           "type": "string",
-          "description": "Relative archive path to Plane A rules definition."
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9._/-]*$",
+          "not": { "pattern": "(^|/)\\.\\.?(/|$)" },
+          "description": "Relative archive path to Plane A rules definition (no absolute paths, '.' or '..' segments)."
         }
       }
     },
@@ -199,16 +207,18 @@
         "producer_ids": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
+          "maxItems": 32,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
         },
         "declared_stats": {
           "type": "array",
+          "maxItems": 256,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["key", "value_type"],
             "properties": {
-              "key": { "type": "string", "minLength": 1 },
+              "key": { "type": "string", "minLength": 1, "maxLength": 128 },
               "value_type": { "type": "string", "enum": ["int64", "float64", "string"] },
               "monotonic": { "type": "boolean" }
             }
@@ -216,7 +226,11 @@
         },
         "rules_file": {
           "type": "string",
-          "description": "Relative archive path to Plane B semantic trigger rules."
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9._/-]*$",
+          "not": { "pattern": "(^|/)\\.\\.?(/|$)" },
+          "description": "Relative archive path to Plane B semantic trigger rules (no absolute paths, '.' or '..' segments)."
         }
       }
     },
@@ -229,6 +243,7 @@
         "sources": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 32,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -239,7 +254,13 @@
                 "enum": ["steam_api", "psn_trophy", "save_file", "emulator_sram", "log_parser"]
               },
               "evidence_class": { "$ref": "#/$defs/evidence_class" },
-              "file_glob": { "type": "string" }
+              "file_glob": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "not": { "pattern": "(^/|^[A-Za-z]:|\\\\|(^|/)\\.\\.(/|$))" },
+                "description": "Glob relative to the watched directory: no absolute paths, drive letters, backslashes or '..' segments."
+              }
             }
           }
         }
@@ -283,11 +304,15 @@
         },
         "icon_path": {
           "type": "string",
-          "pattern": "^assets/[a-zA-Z0-9._/-]+\\.(png|jpg|webp)$"
+          "maxLength": 256,
+          "pattern": "^assets/(?:[a-zA-Z0-9_-][a-zA-Z0-9._-]*/)*[a-zA-Z0-9_-][a-zA-Z0-9._-]*\\.(png|jpg|webp)$",
+          "description": "Archive path under assets/. Every segment starts with a letter, digit, '_' or '-', so '.', '..' and empty segments are rejected."
         },
         "supported_modes": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
           "items": { "$ref": "#/$defs/progression_mode" }
         },
         "minimum_trust_tier": {
@@ -302,7 +327,9 @@
       "properties": {
         "module_path": {
           "type": "string",
-          "pattern": "^rules/[a-zA-Z0-9._/-]+\\.wasm$"
+          "maxLength": 256,
+          "pattern": "^rules/(?:[a-zA-Z0-9_-][a-zA-Z0-9._-]*/)*[a-zA-Z0-9_-][a-zA-Z0-9._-]*\\.wasm$",
+          "description": "Archive path under rules/; '.', '..' and empty segments are rejected."
         },
         "sha256": {
           "type": "string",

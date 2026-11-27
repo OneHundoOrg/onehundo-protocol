@@ -6,7 +6,9 @@ pub mod zip_archive;
 #[cfg(test)]
 mod tests {
     use super::deflate::crc32;
+    use super::json::parse_json;
     use super::validators::{
+        is_safe_archive_path, is_safe_glob, is_safe_relative_path, validate_manifest,
         validate_observation_json_str, validate_pack_bytes, validate_semantic_jsonl_str,
         validate_sparse_jsonl_str,
     };
@@ -165,5 +167,89 @@ mod tests {
         let bad_sparse = r#"{"schema_version":"0.1.0","canonical_game_id":"shared.emu.game","producer_id":"emu_a","session_id":"550e8400-e29b-41d4-a716-446655440002","slot_index":0,"slot_state":"READY","sequence_number":1,"timestamp_nanos":16666667,"lifecycle_signal":"FRAME_GAP","frame_gap_count":0,"payload_size_bytes":16,"progression_mode":"STANDARD","trust_tier":"LOCAL","evidence_class":"RUNTIME_OBSERVED","verification_state":"PENDING"}"#;
         let err = validate_sparse_jsonl_str(bad_sparse).unwrap_err();
         assert!(err.contains("frame_gap_count"), "unexpected err: {}", err);
+    }
+
+    fn manifest_with(patch: &str, value: &str) -> String {
+        VALID_MANIFEST.replacen(patch, value, 1)
+    }
+
+    fn manifest_err(json: &str) -> String {
+        validate_manifest(&parse_json(json).expect("test manifest parses"), None).unwrap_err()
+    }
+
+    fn observation(trust: &str, evidence: &str, verification: &str) -> String {
+        format!(
+            r#"{{"schema_version":"0.1.0","observation_id":"550e8400-e29b-41d4-a716-446655440009","canonical_game_id":"shared.steam.game","observer_id":"scanner","source_type":"save_file","observed_at":"2026-11-27T12:00:00Z","record_kind":"ACHIEVEMENT_EVIDENCE","key":"ach_one","progression_mode":"STANDARD","trust_tier":"{}","evidence_class":"{}","verification_state":"{}"}}"#,
+            trust, evidence, verification
+        )
+    }
+
+    #[test]
+    fn archive_paths_reject_traversal_and_empty_segments() {
+        for ok in ["assets/icon.png", "assets/a/b-c_d.v2.webp", "assets/x.JPG"] {
+            assert!(is_safe_archive_path(ok, "assets", &["png", "jpg", "webp"]), "{}", ok);
+        }
+        for bad in [
+            "assets/../secret.png",
+            "assets/./icon.png",
+            "assets//icon.png",
+            "assets/a/../../x.png",
+            "assets/.hidden.png",
+            "/assets/icon.png",
+            "assets/icon.svg",
+            "assetsx/icon.png",
+        ] {
+            assert!(!is_safe_archive_path(bad, "assets", &["png", "jpg", "webp"]), "{}", bad);
+        }
+        assert!(is_safe_archive_path("rules/eval/main.wasm", "rules", &["wasm"]));
+        assert!(!is_safe_archive_path("rules/../main.wasm", "rules", &["wasm"]));
+        assert!(is_safe_relative_path("achievements/default.json"));
+        assert!(!is_safe_relative_path("../default.json"));
+        assert!(!is_safe_relative_path("/etc/passwd"));
+        assert!(is_safe_glob("**/progress.sav"));
+        for bad in ["../**/*.sav", "/home/*/x", "C:/Saves/*", "saves\\*.sav", "a/../../b"] {
+            assert!(!is_safe_glob(bad), "{}", bad);
+        }
+    }
+
+    #[test]
+    fn manifest_rejects_traversal_icon_and_module_paths() {
+        let icon = manifest_with(r#""points": 15,"#, r#""points": 15, "icon_path": "assets/../../x.png","#);
+        assert!(manifest_err(&icon).contains("icon_path"));
+        let wasm = manifest_with(
+            r#""title": "Bloodborne (PC Port)","#,
+            r#""title": "Bloodborne (PC Port)", "wasm_sandbox": {"module_path": "rules/../x.wasm", "sha256": "aa", "max_memory_bytes": 65536, "max_fuel_per_frame": 1000},"#,
+        );
+        assert!(manifest_err(&wasm).contains("module_path"));
+        let rules = manifest_with(r#""producer_ids": ["bbport_pc"]"#, r#""producer_ids": ["bbport_pc"], "rules_file": "../rules.json""#);
+        assert!(manifest_err(&rules).contains("rules_file"));
+    }
+
+    #[test]
+    fn manifest_enforces_max_items_and_lengths() {
+        let ids: Vec<String> = (0..33).map(|i| format!("\"p{}\"", i)).collect();
+        let many = manifest_with(r#""producer_ids": ["bbport_pc"]"#, &format!(r#""producer_ids": [{}]"#, ids.join(",")));
+        assert!(manifest_err(&many).contains("maxItems"));
+        let long = manifest_with(r#""producer_ids": ["bbport_pc"]"#, &format!(r#""producer_ids": ["{}"]"#, "p".repeat(129)));
+        assert!(manifest_err(&long).contains("maxLength"));
+        let dup = manifest_with(r#""supported_modes": ["STANDARD", "ENCORE"]"#, r#""supported_modes": ["STANDARD", "STANDARD"]"#);
+        assert!(manifest_err(&dup).contains("duplicate"));
+        let authors: Vec<String> = (0..33).map(|i| format!("\"a{}\"", i)).collect();
+        let crowd = manifest_with(r#""title": "Bloodborne (PC Port)","#, &format!(r#""title": "Bloodborne (PC Port)", "authors": [{}],"#, authors.join(",")));
+        assert!(manifest_err(&crowd).contains("maxItems"));
+    }
+
+    #[test]
+    fn plane_c_records_cannot_claim_verified_integration_or_competitive() {
+        assert_eq!(validate_observation_json_str(&observation("LOCAL", "LOCALLY_OBSERVED", "UNVERIFIED")).unwrap(), 1);
+        assert_eq!(validate_observation_json_str(&observation("LOCAL", "PLATFORM_CONFIRMED", "VERIFIED")).unwrap(), 1);
+        for tier in ["VERIFIED_INTEGRATION", "COMPETITIVE"] {
+            let err = validate_observation_json_str(&observation(tier, "PLATFORM_CONFIRMED", "UNVERIFIED")).unwrap_err();
+            assert!(err.contains("trust_tier"), "{}: {}", tier, err);
+        }
+        for evidence in ["LOCALLY_OBSERVED", "INFERRED"] {
+            let err = validate_observation_json_str(&observation("LOCAL", evidence, "VERIFIED")).unwrap_err();
+            assert!(err.contains("PLATFORM_CONFIRMED"), "{}: {}", evidence, err);
+        }
     }
 }

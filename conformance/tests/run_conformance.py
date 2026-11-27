@@ -73,6 +73,68 @@ def check_openapi_spec() -> None:
         assert ref in schemas, f"Broken OpenAPI $ref #/components/schemas/{ref}"
     print("[OK] Verified OpenAPI 3.1.0 specification and Receipt vs. Acceptance separation")
 
+    # Contract bounds match the platform's enforcement, and abuse responses are documented.
+    env = schemas["SyncEventEnvelope"]["properties"]
+    for field, limit in [("canonical_game_id", 128), ("producer_id", 128), ("key", 128), ("string_value", 512), ("idempotency_key", 320)]:
+        assert env[field].get("maxLength") == limit, f"SyncEventEnvelope.{field} maxLength must be {limit}"
+    result = schemas["SyncEventResult"]["properties"]
+    assert result["idempotency_key"].get("maxLength") == env["idempotency_key"]["maxLength"], "response idempotency_key echoes the request's bounds"
+    assert schemas["ErrorResponse"]["properties"]["message"].get("maxLength") == 512
+    assert schemas["ErrorResponse"]["properties"]["code"].get("maxLength") == 64
+    responses = spec.get("components", {}).get("responses", {})
+    assert "Retry-After" in responses["TooManyRequests"]["headers"], "429 must document Retry-After"
+    for path, codes in [("/v1/sync/events", ("413", "429")), ("/v1/devices/register", ("413", "429"))]:
+        got = paths[path]["post"]["responses"]
+        for code in codes:
+            assert code in got, f"{path} must document {code}"
+    for ref in re.findall(r'"#\/components\/responses\/([^"]+)"', raw):
+        assert ref in responses, f"Broken OpenAPI $ref #/components/responses/{ref}"
+    print("[OK] Verified OpenAPI size bounds and 413 / 429 (Retry-After) responses")
+
+
+def check_schema_bounds() -> None:
+    """Exercises the manifest and observation schemas' own patterns and bounds (no jsonschema dependency)."""
+    manifest = json.loads((ROOT / "schemas" / "pack" / "manifest.schema.json").read_text(encoding="utf-8"))
+    defs, props = manifest["$defs"], manifest["properties"]
+    ach = defs["achievement_definition"]["properties"]
+    icon = re.compile(ach["icon_path"]["pattern"])
+    module = re.compile(defs["wasm_sandbox_metadata"]["properties"]["module_path"]["pattern"])
+    for ok in ["assets/icon.png", "assets/a/b-c_d.v2.webp"]:
+        assert icon.search(ok), f"icon_path should accept {ok}"
+    for bad in ["assets/../x.png", "assets/./x.png", "assets//x.png", "assets/a/../../x.png", "assets/.x.png"]:
+        assert not icon.search(bad), f"icon_path must reject {bad}"
+    assert module.search("rules/eval/main.wasm") and not module.search("rules/../main.wasm")
+    rules = defs["semantic_profile"]["properties"]["rules_file"]
+    rules_ok, rules_not = re.compile(rules["pattern"]), re.compile(rules["not"]["pattern"])
+    for ok in ["achievements/default.json", "rules/memory.json"]:
+        assert rules_ok.search(ok) and not rules_not.search(ok), f"rules_file should accept {ok}"
+    for bad in ["../x.json", "a/../x.json", "./x.json", "/etc/x.json"]:
+        assert not rules_ok.search(bad) or rules_not.search(bad), f"rules_file must reject {bad}"
+    glob_not = re.compile(defs["observation_profile"]["properties"]["sources"]["items"]["properties"]["file_glob"]["not"]["pattern"])
+    assert not glob_not.search("**/progress.sav")
+    for bad in ["../*.sav", "/home/*/x", "C:/Saves/*", "a\\b", "x/../y"]:
+        assert glob_not.search(bad), f"file_glob must reject {bad}"
+    bounds = {
+        "authors": props["authors"], "matchers": props["matchers"], "achievements": props["achievements"],
+        "regions": defs["memory_profile"]["properties"]["regions"],
+        "producer_ids": defs["semantic_profile"]["properties"]["producer_ids"],
+        "declared_stats": defs["semantic_profile"]["properties"]["declared_stats"],
+        "sources": defs["observation_profile"]["properties"]["sources"],
+        "supported_modes": ach["supported_modes"],
+    }
+    for name, node in bounds.items():
+        assert isinstance(node.get("maxItems"), int), f"manifest {name} must declare maxItems"
+
+    obs = json.loads((ROOT / "schemas" / "external-observation" / "observation-record.schema.json").read_text(encoding="utf-8"))
+    assert obs["properties"]["trust_tier"]["enum"] == ["LOCAL"], "Plane C records must be LOCAL only"
+    cond = obs["allOf"][0]
+    restricted = set(cond["if"]["properties"]["evidence_class"]["enum"])
+    for rec in json.loads((ROOT / "conformance" / "fixtures" / "observation" / "steam_local_save.oh-obs.json").read_text(encoding="utf-8")):
+        assert rec["trust_tier"] in obs["properties"]["trust_tier"]["enum"], "fixture trust_tier must satisfy the schema"
+        if rec["evidence_class"] in restricted:
+            assert rec["verification_state"] != "VERIFIED", "fixture must satisfy the VERIFIED conditional"
+    print("[OK] Verified manifest path patterns, maxItems bounds and Plane C LOCAL-only trust tier")
+
 
 def check_markdown_links() -> None:
     md_files = [
@@ -209,6 +271,7 @@ def check_fixtures_and_security() -> None:
 def main() -> int:
     check_json_schemas()
     check_openapi_spec()
+    check_schema_bounds()
     check_markdown_links()
     check_fixtures_and_security()
     print("ALL CONFORMANCE CHECKS PASSED.")

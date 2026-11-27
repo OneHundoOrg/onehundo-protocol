@@ -84,7 +84,8 @@
     },
     "trust_tier": {
       "type": "string",
-      "enum": ["LOCAL", "VERIFIED_INTEGRATION", "COMPETITIVE"]
+      "enum": ["LOCAL"],
+      "description": "Plane C records are always LOCAL: passive evidence can never claim VERIFIED_INTEGRATION or COMPETITIVE (the platform downgrades or rejects such claims)."
     },
     "evidence_class": {
       "type": "string",
@@ -99,5 +100,17 @@
       "type": "string",
       "maxLength": 512
     }
-  }
+  },
+  "allOf": [
+    {
+      "description": "Only platform-confirmed evidence (e.g. a platform API's own unlock record) may be marked VERIFIED; locally observed or inferred evidence never is.",
+      "if": {
+        "required": ["evidence_class"],
+        "properties": { "evidence_class": { "enum": ["LOCALLY_OBSERVED", "INFERRED"] } }
+      },
+      "then": {
+        "properties": { "verification_state": { "not": { "const": "VERIFIED" } } }
+      }
+    }
+  ]
 }
